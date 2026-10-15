@@ -56,7 +56,11 @@ const SUGGESTIONS = [
 
 // VITE_API_URL may be either the backend origin or the full /api base URL.
 const configuredApiUrl =
-  import.meta.env.VITE_API_URL || "http://localhost:5000";
+  import.meta.env.VITE_API_URL ||
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.PROD
+    ? "https://bt-pulse-api.onrender.com"
+    : "http://localhost:5000");
 const API_ROOT = configuredApiUrl.replace(/\/$/, "").endsWith("/api")
   ? configuredApiUrl.replace(/\/$/, "")
   : `${configuredApiUrl.replace(/\/$/, "")}/api`;
