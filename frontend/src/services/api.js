@@ -60,10 +60,10 @@ export function getProfile(token) {
   return request("/api/auth/me", { token });
 }
 
+// Extract a city from a weather question.
 function extractCity(message) {
   const text = message.trim();
 
-  // Remove relative and common weather time expressions before city extraction.
   const timeWords =
     /\b(today|tomorrow|tonight|now|currently|right now|this week|next week|this morning|this afternoon|this evening|in the morning|in the afternoon|in the evening|after\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:minutes?|hours?|days?)|in\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:minutes?|hours?|days?))\b/gi;
 
@@ -135,6 +135,7 @@ export function getConversation(token, conversationId) {
   );
 }
 
+// Contact
 export function sendContactMessage({ name, email, subject, message }) {
   return request("/api/contact", {
     method: "POST",
@@ -145,4 +146,30 @@ export function sendContactMessage({ name, email, subject, message }) {
       message,
     }),
   });
+}
+
+// Pro Dashboard
+export function getProDashboard(token) {
+  return request("/api/pro/dashboard", { token });
+}
+
+export function saveProLocation(
+  token,
+  { city, label = "Home", country = null },
+) {
+  return request("/api/pro/dashboard/locations", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ city, label, country }),
+  });
+}
+
+export function deleteProLocation(token, locationId) {
+  return request(
+    `/api/pro/dashboard/locations/${encodeURIComponent(locationId)}`,
+    {
+      method: "DELETE",
+      token,
+    },
+  );
 }

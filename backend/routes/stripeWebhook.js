@@ -178,7 +178,7 @@ DO UPDATE SET
   );
 
   console.log(
-    `Subscription ${subscriptionId} synchronized: ${status}; plan=${hasProAccess ? "pro" : "free"}`,
+    `Subscription ${subscriptionId} synchronized successfully: ${status}`,
   );
 }
 

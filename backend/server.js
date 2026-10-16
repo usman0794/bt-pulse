@@ -10,6 +10,7 @@ const chatRoutes = require("./routes/chat");
 const paymentRoutes = require("./routes/payments");
 const stripeWebhookRoutes = require("./routes/stripeWebhook");
 const contactRoutes = require("./routes/contact");
+const proDashboardRoutes = require("./routes/proDashboard");
 
 const app = express();
 
@@ -26,6 +27,7 @@ app.use("/api/weather", weatherRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/contact", contactRoutes);
+app.use("/api/pro/dashboard", proDashboardRoutes);
 
 // Test route
 app.get("/", (req, res) => {
