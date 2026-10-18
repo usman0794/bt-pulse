@@ -5,8 +5,9 @@ const { generateChatResponse } = require("../services/longcat");
 
 const router = express.Router();
 
-const WEATHER_CACHE_TTL = 10 * 60 * 1000;
+const WEATHER_CACHE_TTL = 60 * 60 * 1000;
 const weatherCache = new Map();
+const dailyCityInsightCache = new Map();
 
 function getCachedWeather(key) {
   const cached = weatherCache.get(key);
@@ -43,6 +44,83 @@ async function fetchOpenWeather(url) {
 
   return data;
 }
+
+router.get("/locations/search", authenticateToken, async (req, res) => {
+  try {
+    const userResult = await pool.query(
+      "SELECT plan FROM users WHERE id = $1",
+      [req.user.id],
+    );
+    if (userResult.rowCount === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found." });
+    }
+    if (
+      String(userResult.rows[0].plan || "")
+        .trim()
+        .toLowerCase() !== "pro"
+    ) {
+      return res.status(403).json({
+        success: false,
+        code: "PRO_REQUIRED",
+        message: "A Pro subscription is required to search locations.",
+      });
+    }
+
+    const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    if (query.length < 2) return res.json({ success: true, locations: [] });
+    if (query.length > 100)
+      return res.status(400).json({
+        success: false,
+        message: "Search must be 100 characters or fewer.",
+      });
+
+    const apiKey = process.env.OPENWEATHER_API_KEY;
+    if (!apiKey)
+      return res
+        .status(500)
+        .json({ success: false, message: "Weather API is not configured." });
+
+    const params = new URLSearchParams({ q: query, limit: "8", appid: apiKey });
+    const response = await fetch(
+      `https://api.openweathermap.org/geo/1.0/direct?${params}`,
+    );
+    const data = await response.json().catch(() => []);
+    if (!response.ok) {
+      console.error(
+        "OpenWeather city search failed:",
+        response.status,
+        data?.message || "",
+      );
+      return res.status(502).json({
+        success: false,
+        message: "City search is temporarily unavailable.",
+      });
+    }
+
+    const seen = new Set();
+    const locations = (Array.isArray(data) ? data : [])
+      .map((item) => ({
+        name: item.name,
+        country: item.country || "",
+        state: item.state || "",
+      }))
+      .filter((item) => {
+        const key = `${item.name}|${item.state}|${item.country}`.toLowerCase();
+        if (!item.name || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+    return res.json({ success: true, locations });
+  } catch (error) {
+    console.error("City search failed:", error.message);
+    return res
+      .status(500)
+      .json({ success: false, message: "Unable to search cities." });
+  }
+});
 
 router.get("/", authenticateToken, async (req, res) => {
   try {
@@ -90,7 +168,7 @@ router.get("/", authenticateToken, async (req, res) => {
 
     const locations = await Promise.all(
       locationsResult.rows.map(async (location) => {
-        const cacheKey = location.city.trim().toLowerCase();
+        const cacheKey = `${location.city.trim().toLowerCase()}|${(location.country || "").trim().toLowerCase()}`;
         const cached = getCachedWeather(cacheKey);
 
         if (cached) {
@@ -102,8 +180,26 @@ router.get("/", authenticateToken, async (req, res) => {
         }
 
         try {
+          // Resolve the saved city name to a matching OpenWeather location, then
+          // use its coordinates internally for current weather and forecast.
+          const geocodeParams = new URLSearchParams({
+            q: `${location.city}${location.country ? `,${location.country}` : ""}`,
+            limit: "1",
+            appid: apiKey,
+          });
+          const geoResponse = await fetch(
+            `https://api.openweathermap.org/geo/1.0/direct?${geocodeParams}`,
+          );
+          const geoData = await geoResponse.json().catch(() => []);
+          if (!geoResponse.ok || !Array.isArray(geoData) || !geoData.length) {
+            const notFound = new Error("City not found.");
+            notFound.status = 404;
+            throw notFound;
+          }
+          const selectedPlace = geoData[0];
           const params = new URLSearchParams({
-            q: location.city,
+            lat: String(selectedPlace.lat),
+            lon: String(selectedPlace.lon),
             appid: apiKey,
             units: "metric",
           });
@@ -202,78 +298,57 @@ router.get("/", authenticateToken, async (req, res) => {
       }),
     );
 
-    // Reuse today's insight, generating one only when needed.
-    let insightResult = await pool.query(
-      `SELECT insight_text, insight_date
-       FROM daily_ai_insights
-       WHERE user_id = $1
-         AND insight_date = CURRENT_DATE
-       LIMIT 1`,
-      [req.user.id],
+    // Create a short insight per saved city. Cache each one for the current date
+    // in memory so reopening the dashboard does not repeatedly call the AI provider.
+    const today = new Date().toISOString().slice(0, 10);
+    const insightOptions = await Promise.all(
+      locations
+        .filter((location) => location.currentWeather && !location.weatherError)
+        .map(async (location) => {
+          const cacheKey = `${req.user.id}:${location.id}:${today}`;
+          const cachedInsight = dailyCityInsightCache.get(cacheKey);
+          if (cachedInsight) return cachedInsight;
+
+          const current = location.currentWeather;
+          let generated = "";
+          try {
+            generated = await generateChatResponse([
+              {
+                role: "system",
+                content:
+                  "You are BTP Weather Assistant. Write a concise weather insight in 1-2 short sentences (maximum 45 words). Use only the supplied data. Mention temperature, rain chance, and air quality only when relevant. Never invent measurements or give medical advice. Return plain text only.",
+              },
+              {
+                role: "user",
+                content: `Give a brief weather insight for ${current.city}, ${current.country || ""}. Data: ${JSON.stringify({ currentWeather: current, forecast: location.forecast, airQuality: location.airQuality })}`,
+              },
+            ]);
+          } catch (error) {
+            console.error(
+              `AI insight failed for ${location.city}:`,
+              error.message,
+            );
+          }
+
+          const option = {
+            locationId: location.id,
+            city: `${location.city}${location.country ? `, ${location.country}` : ""}`,
+            text: String(generated || "").trim(),
+          };
+          if (option.text) dailyCityInsightCache.set(cacheKey, option);
+          return option;
+        }),
     );
 
-    if (insightResult.rowCount === 0) {
-      const usableLocations = locations.filter(
-        (location) => location.currentWeather && !location.weatherError,
-      );
-
-      if (usableLocations.length > 0) {
-        const weatherContext = usableLocations.map((location) => ({
-          city: location.currentWeather.city,
-          country: location.currentWeather.country,
-          currentWeather: location.currentWeather,
-          forecast: location.forecast,
-          airQuality: location.airQuality,
-        }));
-
-        const generatedInsight = await generateChatResponse([
-          {
-            role: "system",
-            content:
-              "You are BTP Weather Assistant. Write one concise daily weather insight for a Pro dashboard, around 80-120 words. Use only the supplied weather data. Mention useful temperature or rain trends and air quality when relevant. Do not invent measurements, claim certainty about future weather, or give medical advice. If air quality is poor, recommend checking local official guidance and limiting unnecessary outdoor exposure. Return only the insight text.",
-          },
-          {
-            role: "user",
-            content: `Create today's weather insight from this data:\n${JSON.stringify(
-              weatherContext,
-            )}`,
-          },
-        ]);
-
-        const insightText =
-          typeof generatedInsight === "string" ? generatedInsight.trim() : "";
-
-        if (insightText) {
-          // Keep only one insight per user per day, even with
-          // simultaneous dashboard requests.
-          await pool.query(
-            `INSERT INTO daily_ai_insights
-               (user_id, insight_date, insight_text)
-             VALUES ($1, CURRENT_DATE, $2)
-             ON CONFLICT (user_id, insight_date) DO NOTHING`,
-            [req.user.id, insightText],
-          );
-
-          // Read the persisted record, including if another request
-          // generated and saved the insight first.
-          insightResult = await pool.query(
-            `SELECT insight_text, insight_date
-             FROM daily_ai_insights
-             WHERE user_id = $1
-               AND insight_date = CURRENT_DATE
-             LIMIT 1`,
-            [req.user.id],
-          );
-        }
-      }
+    // Keep the process cache bounded and discard prior-day insights.
+    for (const key of dailyCityInsightCache.keys()) {
+      if (!key.endsWith(`:${today}`)) dailyCityInsightCache.delete(key);
     }
 
-    const dailyInsight = insightResult.rows[0]
-      ? {
-          text: insightResult.rows[0].insight_text,
-          date: insightResult.rows[0].insight_date,
-        }
-      : null;
+    const dailyInsight = {
+      date: today,
+      options: insightOptions.filter((option) => option.text),
+    };
 
     return res.json({
       success: true,
@@ -449,7 +524,12 @@ router.delete("/locations/:id", authenticateToken, async (req, res) => {
     }
 
     // Remove cached weather for the deleted city.
-    weatherCache.delete(result.rows[0].city.trim().toLowerCase());
+    weatherCache.delete(
+      `${result.rows[0].city.trim().toLowerCase()}|${(result.rows[0].country || "").trim().toLowerCase()}`,
+    );
+    for (const key of dailyCityInsightCache.keys()) {
+      if (key.includes(`:${id}:`)) dailyCityInsightCache.delete(key);
+    }
 
     return res.json({
       success: true,

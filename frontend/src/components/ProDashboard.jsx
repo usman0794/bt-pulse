@@ -15,7 +15,7 @@ function formatDate(dateString) {
   });
 }
 
-function WeatherCard({ location }) {
+function WeatherCard({ location, onRemove, removing }) {
   const current = location.currentWeather;
   const air = location.airQuality;
 
@@ -30,9 +30,19 @@ function WeatherCard({ location }) {
           </h3>
         </div>
 
-        <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700">
-          {location.cached ? "Cached" : "Live"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700">
+            {location.cached ? "Cached" : "Live"}
+          </span>
+          <button
+            type="button"
+            onClick={onRemove}
+            disabled={removing}
+            className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+          >
+            {removing ? "Removing…" : "Remove"}
+          </button>
+        </div>
       </div>
 
       {location.weatherError ? (
@@ -200,6 +210,11 @@ export default function ProDashboard({ token }) {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [notice, setNotice] = useState("");
+  const [confirmLocation, setConfirmLocation] = useState(null);
+  const [selectedInsightId, setSelectedInsightId] = useState("");
+  const [citySuggestions, setCitySuggestions] = useState([]);
+  const [citySearchLoading, setCitySearchLoading] = useState(false);
+  const [showCitySuggestions, setShowCitySuggestions] = useState(false);
 
   const loadDashboard = useCallback(
     async ({ showLoading = true } = {}) => {
@@ -217,6 +232,12 @@ export default function ProDashboard({ token }) {
       try {
         const result = await getProDashboard(token);
         setDashboard(result.dashboard);
+        const options = result.dashboard?.dailyInsight?.options || [];
+        setSelectedInsightId((current) =>
+          options.some((option) => option.locationId === current)
+            ? current
+            : options[0]?.locationId || "",
+        );
       } catch (err) {
         setError(err.message || "Unable to load the Pro Dashboard.");
       } finally {
@@ -230,6 +251,58 @@ export default function ProDashboard({ token }) {
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
+
+  useEffect(() => {
+    if (!notice) return undefined;
+    const timeoutId = window.setTimeout(() => setNotice(""), 3500);
+    return () => window.clearTimeout(timeoutId);
+  }, [notice]);
+
+  // Search a global geocoding service so suggestions are not limited to a hardcoded list.
+  useEffect(() => {
+    const query = city.trim();
+    if (query.length < 2 || !showCitySuggestions) {
+      setCitySuggestions([]);
+      setCitySearchLoading(false);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(async () => {
+      setCitySearchLoading(true);
+      try {
+        const params = new URLSearchParams({
+          name: query,
+          count: "8",
+          language: "en",
+          format: "json",
+        });
+        const response = await fetch(
+          `https://geocoding-api.open-meteo.com/v1/search?${params}`,
+          { signal: controller.signal },
+        );
+        if (!response.ok) throw new Error("City search unavailable");
+        const data = await response.json();
+        setCitySuggestions(
+          (data.results || []).map((item) => ({
+            name: item.name,
+            country: item.country || "",
+            admin1: item.admin1 || "",
+            id: `${item.id}-${item.latitude}-${item.longitude}`,
+          })),
+        );
+      } catch (err) {
+        if (err.name !== "AbortError") setCitySuggestions([]);
+      } finally {
+        if (!controller.signal.aborted) setCitySearchLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [city, showCitySuggestions]);
 
   async function handleSaveLocation(event) {
     event.preventDefault();
@@ -263,22 +336,21 @@ export default function ProDashboard({ token }) {
   }
 
   async function handleDeleteLocation(location) {
-    const confirmed = window.confirm(
-      `Remove ${location.city} from your saved locations?`,
-    );
-
-    if (!confirmed) return;
-
     setError("");
     setNotice("");
     setDeletingId(location.id);
 
     try {
       await deleteProLocation(token, location.id);
-      setNotice(`${location.city} was removed.`);
+      setConfirmLocation(null);
+      setNotice(
+        `${location.city}${location.country ? `, ${location.country}` : ""} was removed from your saved locations.`,
+      );
       await loadDashboard({ showLoading: false });
     } catch (err) {
-      setError(err.message || "Unable to delete location.");
+      setError(
+        err.message || "Unable to remove this location. Please try again.",
+      );
     } finally {
       setDeletingId(null);
     }
@@ -373,25 +445,76 @@ export default function ProDashboard({ token }) {
       {notice && (
         <div
           role="status"
-          className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"
+          aria-live="polite"
+          className="fixed right-4 top-4 z-50 flex max-w-md items-start gap-3 rounded-2xl border border-emerald-200 bg-white px-4 py-3 shadow-xl shadow-slate-900/10"
         >
-          {notice}
+          <span
+            className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"
+            aria-hidden="true"
+          >
+            ✓
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-slate-900">Success</p>
+            <p className="mt-0.5 text-sm text-slate-600">{notice}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setNotice("")}
+            aria-label="Dismiss notification"
+            className="rounded-md px-1 text-lg leading-5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          >
+            ×
+          </button>
         </div>
       )}
 
-      {dashboard?.dailyInsight && (
+      {dashboard?.locations?.length > 0 && (
         <article className="rounded-2xl border border-sky-200 bg-sky-50 p-5 sm:p-6">
-          <p className="text-sm font-semibold text-sky-800">DAILY AI INSIGHT</p>
-          <h2 className="mt-2 text-xl font-semibold text-slate-900">
-            Today's weather outlook
-          </h2>
-          <p className="mt-3 whitespace-pre-line leading-7 text-slate-700">
-            {dashboard.dailyInsight.text}
-          </p>
-          {dashboard.dailyInsight.date && (
-            <p className="mt-3 text-xs text-slate-500">
-              Insight date:{" "}
-              {formatDate(String(dashboard.dailyInsight.date).slice(0, 10))}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-sky-800">
+                DAILY AI INSIGHT
+              </p>
+              <h2 className="mt-1 text-xl font-semibold text-slate-900">
+                Weather outlook
+              </h2>
+            </div>
+            {(dashboard?.dailyInsight?.options?.length || 0) > 0 && (
+              <label className="text-sm font-medium text-slate-700">
+                <span className="sr-only">Choose a city insight</span>
+                <select
+                  value={selectedInsightId}
+                  onChange={(event) => setSelectedInsightId(event.target.value)}
+                  className="max-w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                >
+                  {dashboard.dailyInsight.options.map((option) => (
+                    <option key={option.locationId} value={option.locationId}>
+                      {option.city}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+          {(dashboard?.dailyInsight?.options?.length || 0) > 0 ? (
+            <>
+              <p className="mt-3 leading-6 text-slate-700">
+                {dashboard.dailyInsight.options.find(
+                  (option) => option.locationId === selectedInsightId,
+                )?.text || dashboard.dailyInsight.options[0].text}
+              </p>
+              <p className="mt-3 text-xs text-slate-500">
+                Daily insight ·{" "}
+                {formatDate(
+                  String(dashboard.dailyInsight.date || "").slice(0, 10),
+                )}
+              </p>
+            </>
+          ) : (
+            <p className="mt-3 text-sm text-slate-700">
+              AI insight is not available yet. Check the backend terminal for an
+              AI provider error, then click Refresh.
             </p>
           )}
         </article>
@@ -408,14 +531,64 @@ export default function ProDashboard({ token }) {
         >
           <label className="text-sm font-medium text-slate-700">
             City *
-            <input
-              value={city}
-              onChange={(event) => setCity(event.target.value)}
-              maxLength={100}
-              required
-              placeholder="e.g. Lahore"
-              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-            />
+            <div className="relative mt-1">
+              <input
+                value={city}
+                onFocus={() => setShowCitySuggestions(true)}
+                onChange={(event) => {
+                  setCity(event.target.value);
+                  setCountry("");
+                  setShowCitySuggestions(true);
+                }}
+                onBlur={() =>
+                  window.setTimeout(() => setShowCitySuggestions(false), 150)
+                }
+                maxLength={100}
+                required
+                placeholder="Search any city…"
+                autoComplete="off"
+                aria-autocomplete="list"
+                aria-expanded={showCitySuggestions && city.trim().length >= 2}
+                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              />
+              {showCitySuggestions && city.trim().length >= 2 && (
+                <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                  {citySearchLoading ? (
+                    <p className="px-3 py-2 text-sm text-slate-500">
+                      Searching cities…
+                    </p>
+                  ) : citySuggestions.length > 0 ? (
+                    citySuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion.id}
+                        type="button"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          setCity(suggestion.name);
+                          setCountry(suggestion.country);
+                          setShowCitySuggestions(false);
+                          setCitySuggestions([]);
+                        }}
+                        className="block w-full px-3 py-2 text-left text-sm hover:bg-sky-50"
+                      >
+                        <span className="block font-medium text-slate-800">
+                          {suggestion.name}
+                        </span>
+                        <span className="block text-xs text-slate-500">
+                          {[suggestion.admin1, suggestion.country]
+                            .filter(Boolean)
+                            .join(", ")}
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="px-3 py-2 text-sm text-slate-500">
+                      No matches. You can still enter the city name manually.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
           </label>
 
           <label className="text-sm font-medium text-slate-700">
@@ -474,26 +647,96 @@ export default function ProDashboard({ token }) {
         ) : (
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
             {dashboard.locations.map((location) => (
-              <div key={location.id} className="space-y-3">
-                <WeatherCard location={location} />
-
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteLocation(location)}
-                    disabled={deletingId === location.id}
-                    className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-                  >
-                    {deletingId === location.id
-                      ? "Removing…"
-                      : "Remove location"}
-                  </button>
-                </div>
+              <div key={location.id}>
+                <WeatherCard
+                  location={location}
+                  onRemove={() => setConfirmLocation(location)}
+                  removing={deletingId === location.id}
+                />
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {confirmLocation && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 p-4"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !deletingId)
+              setConfirmLocation(null);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remove-location-title"
+            aria-describedby="remove-location-description"
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  className="h-5 w-5"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M3 6h18M9 6V4h6v2m-9 0 1 14h10l1-14M10 10v6m4-6v6"
+                  />
+                </svg>
+              </div>
+              <div>
+                <h2
+                  id="remove-location-title"
+                  className="text-lg font-semibold text-slate-900"
+                >
+                  Remove saved location?
+                </h2>
+                <p
+                  id="remove-location-description"
+                  className="mt-2 text-sm leading-6 text-slate-600"
+                >
+                  Are you sure you want to remove{" "}
+                  <span className="font-semibold text-slate-800">
+                    {confirmLocation.city}
+                    {confirmLocation.country
+                      ? `, ${confirmLocation.country}`
+                      : ""}
+                  </span>
+                  ? It will no longer appear on your Pro Dashboard.
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                disabled={Boolean(deletingId)}
+                onClick={() => setConfirmLocation(null)}
+                className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(deletingId)}
+                onClick={() => handleDeleteLocation(confirmLocation)}
+                className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deletingId === confirmLocation.id
+                  ? "Removing…"
+                  : "Yes, remove location"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </section>
   );
 }

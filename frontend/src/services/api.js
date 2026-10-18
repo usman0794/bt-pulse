@@ -148,6 +148,14 @@ export function sendContactMessage({ name, email, subject, message }) {
   });
 }
 
+// OpenWeather city suggestions (API key is kept on the backend).
+export function searchProCities(query, token) {
+  return request(
+    `/api/pro/dashboard/locations/search?q=${encodeURIComponent(query)}`,
+    { token },
+  );
+}
+
 // Pro Dashboard
 export function getProDashboard(token) {
   return request("/api/pro/dashboard", { token });

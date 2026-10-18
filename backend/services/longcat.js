@@ -1,18 +1,25 @@
 require("dotenv").config();
 const OpenAI = require("openai");
 
-const apiKey = process.env.LONGCAT_API_KEY;
+const apiKey = process.env.GROQ_API_KEY;
 
 if (!apiKey) {
-  throw new Error("LONGCAT_API_KEY is missing from backend/.env");
+  throw new Error("GROQ_API_KEY is missing from backend/.env");
 }
+
+// const client = new OpenAI({
+//   apiKey,
+//   baseURL: process.env.LONGCAT_BASE_URL || "https://api.longcat.chat/openai",
+// });
+
+// const MODEL = process.env.LONGCAT_MODEL || "LongCat-2.0";
 
 const client = new OpenAI({
   apiKey,
-  baseURL: process.env.LONGCAT_BASE_URL || "https://api.longcat.chat/openai",
+  baseURL: process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1",
 });
 
-const MODEL = process.env.LONGCAT_MODEL || "LongCat-2.0";
+const MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
 async function generateChatResponse(messages) {
   const response = await client.chat.completions.create({
