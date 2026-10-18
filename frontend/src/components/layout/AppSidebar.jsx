@@ -1,5 +1,6 @@
 import {
   CloudSun,
+  LocateFixed,
   MessageSquare,
   MessagesSquare,
   Plus,
@@ -100,6 +101,21 @@ export default function AppSidebar({
         >
           <MessageSquare size={17} />
           <span>Weather Chat</span>
+        </button>
+
+        <button
+          className={`sidebar-link ${activeView === "live-location" ? "sidebar-link-active" : ""}`}
+          onClick={() => {
+            setActiveView("live-location");
+            setHistoryOpen(false);
+            setMobileSidebarOpen(false);
+            setBillingNotice("");
+            setBillingError("");
+          }}
+          type="button"
+        >
+          <LocateFixed size={17} />
+          <span>Live Location</span>
         </button>
 
         <button

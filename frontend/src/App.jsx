@@ -9,7 +9,7 @@ import {
   getConversation,
 } from "./services/api";
 
-import { CloudSun, LoaderCircle, Menu } from "lucide-react";
+import { CloudSun, Info, LoaderCircle, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AppSidebar from "./components/layout/AppSidebar";
 import AuthPage from "./features/auth/AuthPage";
@@ -18,6 +18,10 @@ import "./App.css";
 import ProDashboard from "./components/ProDashboard";
 import ContactPage from "./features/contact/ContactPage";
 import BillingPage from "./features/billing/BillingPage";
+import LiveLocationPage from "./features/weather/LiveLocationPage";
+
+const outlineBtn =
+  "rounded-full border-slate-300 px-5 text-slate-700 hover:bg-slate-50";
 
 const WELCOME_MESSAGE = {
   role: "assistant",
@@ -82,7 +86,13 @@ function App() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   // Restore the last page from the URL first, then localStorage.
   // This keeps Billing/Dashboard/Contact selected after a browser refresh.
-  const validViews = ["chat", "dashboard", "billing", "contact"];
+  const validViews = [
+    "chat",
+    "dashboard",
+    "billing",
+    "contact",
+    "live-location",
+  ];
   const [activeView, setActiveViewState] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const urlView = params.get("view");
@@ -97,6 +107,7 @@ function App() {
       dashboard: "Pro Dashboard",
       billing: "Plan & Billing",
       contact: "Contact Us",
+      "live-location": "Live Location",
     };
 
     document.title = titles[activeView] || "BTP Weather";
@@ -108,6 +119,7 @@ function App() {
       dashboard: "Pro Dashboard",
       billing: "Plan & Billing",
       contact: "Contact Us",
+      "live-location": "Live Location",
     };
 
     document.title = titles[activeView] || "BTP Weather";
@@ -754,6 +766,29 @@ function App() {
           openBillingPortal={openBillingPortal}
           scheduleCancellation={scheduleCancellation}
         />
+      ) : activeView === "live-location" ? (
+        <section className="chat-panel">
+          <header className="topbar">
+            <div className="topbar-heading">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="mobile-menu-button"
+                onClick={() => setMobileSidebarOpen(true)}
+                aria-label="Open navigation"
+              >
+                <Menu size={20} />
+              </Button>
+              <div>
+                <h1>Live Location</h1>
+                <p>Current weather near you</p>
+              </div>
+            </div>
+          </header>
+          <div className="chat-scroll-area">
+            <LiveLocationPage />
+          </div>
+        </section>
       ) : activeView === "contact" ? (
         <ContactPage
           setActiveView={setActiveView}
