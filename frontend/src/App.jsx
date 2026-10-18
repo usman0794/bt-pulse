@@ -79,7 +79,29 @@ function App() {
   const [conversations, setConversations] = useState([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [activeView, setActiveView] = useState("chat");
+  // Restore the last page from the URL first, then localStorage.
+  // This keeps Billing/Dashboard/Contact selected after a browser refresh.
+  const validViews = ["chat", "dashboard", "billing", "contact"];
+  const [activeView, setActiveViewState] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlView = params.get("view");
+    if (validViews.includes(urlView)) return urlView;
+
+    const savedView = localStorage.getItem("btp_active_view");
+    return validViews.includes(savedView) ? savedView : "chat";
+  });
+
+  function setActiveView(view) {
+    if (!validViews.includes(view)) return;
+
+    setActiveViewState(view);
+    localStorage.setItem("btp_active_view", view);
+
+    // Keep the selected page visible in the address bar, e.g. ?view=billing.
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", view);
+    window.history.replaceState({}, "", url);
+  }
   const [subscription, setSubscription] = useState(null);
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingAction, setBillingAction] = useState("");
@@ -94,6 +116,10 @@ function App() {
   const [contactLoading, setContactLoading] = useState(false);
   const [contactError, setContactError] = useState("");
   const [contactSuccess, setContactSuccess] = useState("");
+
+  useEffect(() => {
+    localStorage.setItem("btp_active_view", activeView);
+  }, [activeView]);
 
   useEffect(() => {
     if (!token) {
@@ -267,6 +293,8 @@ function App() {
 
   function handleLogout() {
     localStorage.removeItem("btp_token");
+    localStorage.removeItem("btp_active_view");
+    setActiveView("chat");
     setToken("");
     setUser(null);
     setConversationId(null);
@@ -392,6 +420,9 @@ function App() {
 
     params.delete("payment");
     params.delete("session_id");
+    if (paymentStatus === "success" || paymentStatus === "cancelled") {
+      params.set("view", "billing");
+    }
     const cleanUrl = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
     window.history.replaceState({}, "", cleanUrl);
   }, [token]);
