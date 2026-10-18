@@ -20,25 +20,25 @@ function WeatherCard({ location, onRemove, removing }) {
   const air = location.airQuality;
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <article className="rounded-2xl border border-[var(--line)] bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm text-slate-500">{location.label}</p>
-          <h3 className="text-xl font-semibold text-slate-900">
+          <p className="text-sm text-[var(--ink-600)]">{location.label}</p>
+          <h3 className="text-xl font-semibold text-[var(--ink-900)]">
             {location.city}
             {location.country ? `, ${location.country}` : ""}
           </h3>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700">
+          <span className="rounded-full bg-[var(--info-bg)] px-3 py-1 text-xs font-medium text-[var(--info-text)]">
             {location.cached ? "Cached" : "Live"}
           </span>
           <button
             type="button"
             onClick={onRemove}
             disabled={removing}
-            className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+            className="rounded-lg border border-[var(--danger)] px-3 py-1.5 text-xs font-medium text-[var(--danger)] hover:bg-[var(--bg-soft)] disabled:opacity-50"
           >
             {removing ? "Removing…" : "Remove"}
           </button>
@@ -46,17 +46,17 @@ function WeatherCard({ location, onRemove, removing }) {
       </div>
 
       {location.weatherError ? (
-        <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+        <p className="mt-4 rounded-lg bg-[var(--bg-soft)] p-3 text-sm text-[var(--warning)]">
           {location.weatherError}
         </p>
       ) : (
         <>
           {current && (
             <div className="mt-5">
-              <p className="text-4xl font-bold text-slate-900">
+              <p className="text-4xl font-bold text-[var(--ink-900)]">
                 {Math.round(current.temperatureC)}°C
               </p>
-              <p className="mt-1 capitalize text-slate-600">
+              <p className="mt-1 capitalize text-[var(--ink-600)]">
                 {current.description || "Conditions unavailable"}
               </p>
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -78,38 +78,51 @@ function WeatherCard({ location, onRemove, removing }) {
           )}
 
           <div className="mt-6">
-            <h4 className="font-semibold text-slate-900">Five-day forecast</h4>
+            <h4 className="font-semibold text-[var(--ink-900)]">
+              Five-day forecast
+            </h4>
 
             {location.forecast?.length ? (
               <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                 {location.forecast.map((day) => (
-                  <div key={day.date} className="rounded-xl bg-slate-50 p-3">
-                    <p className="text-xs text-slate-500">
+                  <div
+                    key={day.date}
+                    className="rounded-xl bg-[var(--bg-soft)] p-3"
+                  >
+                    <p className="text-xs text-[var(--ink-600)]">
                       {formatDate(day.date)}
                     </p>
-                    <p className="mt-2 font-semibold text-slate-900">
+                    <p className="mt-2 font-semibold text-[var(--ink-900)]">
                       {Math.round(day.maxTemperatureC)}° /{" "}
                       {Math.round(day.minTemperatureC)}°
                     </p>
-                    <p className="mt-1 text-xs text-slate-600">
+                    <p className="mt-1 text-xs text-[var(--ink-600)]">
                       Rain: {day.rainProbability}%
                     </p>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="mt-2 text-sm text-slate-500">
+              <p className="mt-2 text-sm text-[var(--ink-600)]">
                 Forecast unavailable.
               </p>
             )}
           </div>
 
-          <div className="mt-5 rounded-xl border border-slate-200 p-4">
-            <h4 className="font-semibold text-slate-900">Air quality</h4>
+          <div className="mt-5 rounded-xl border border-[var(--line)] p-4">
+            <h4 className="font-semibold text-[var(--ink-900)]">Air quality</h4>
 
             {air ? (
               <>
-                <p className="mt-1 text-sm text-slate-700">
+                <p
+                  className={`mt-1 text-sm font-medium ${
+                    air.index <= 1
+                      ? "text-[var(--success)]"
+                      : air.index <= 3
+                        ? "text-[var(--warning)]"
+                        : "text-[var(--danger)]"
+                  }`}
+                >
                   {air.label} (AQI {air.index})
                 </p>
                 <div className="mt-3 grid grid-cols-2 gap-3">
@@ -118,7 +131,7 @@ function WeatherCard({ location, onRemove, removing }) {
                 </div>
               </>
             ) : (
-              <p className="mt-2 text-sm text-slate-500">
+              <p className="mt-2 text-sm text-[var(--ink-600)]">
                 Air quality data unavailable.
               </p>
             )}
@@ -131,9 +144,9 @@ function WeatherCard({ location, onRemove, removing }) {
 
 function Metric({ label, value }) {
   return (
-    <div className="rounded-lg bg-slate-50 p-3">
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className="mt-1 font-semibold text-slate-900">{value}</p>
+    <div className="rounded-lg bg-[var(--bg-soft)] p-3">
+      <p className="text-xs text-[var(--ink-600)]">{label}</p>
+      <p className="mt-1 font-semibold text-[var(--ink-900)]">{value}</p>
     </div>
   );
 }
@@ -142,7 +155,7 @@ function SkeletonBlock({ className = "" }) {
   return (
     <div
       aria-hidden="true"
-      className={`animate-pulse rounded-md bg-slate-200 ${className}`}
+      className={`animate-pulse rounded-md bg-[var(--line)] ${className}`}
     />
   );
 }
@@ -151,7 +164,7 @@ function WeatherCardSkeleton() {
   return (
     <article
       aria-hidden="true"
-      className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+      className="space-y-5 rounded-2xl border border-[var(--line)] bg-white p-5 shadow-sm"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 space-y-2">
@@ -165,7 +178,7 @@ function WeatherCardSkeleton() {
         <SkeletonBlock className="h-4 w-36" />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {Array.from({ length: 3 }, (_, index) => (
-            <div key={index} className="rounded-lg bg-slate-50 p-3">
+            <div key={index} className="rounded-lg bg-[var(--bg-soft)] p-3">
               <SkeletonBlock className="h-3 w-16" />
               <SkeletonBlock className="mt-2 h-5 w-20 max-w-full" />
             </div>
@@ -176,7 +189,7 @@ function WeatherCardSkeleton() {
         <SkeletonBlock className="h-5 w-40" />
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {Array.from({ length: 5 }, (_, index) => (
-            <div key={index} className="rounded-xl bg-slate-50 p-3">
+            <div key={index} className="rounded-xl bg-[var(--bg-soft)] p-3">
               <SkeletonBlock className="h-3 w-16 max-w-full" />
               <SkeletonBlock className="mt-3 h-5 w-20 max-w-full" />
               <SkeletonBlock className="mt-2 h-3 w-14 max-w-full" />
@@ -184,7 +197,7 @@ function WeatherCardSkeleton() {
           ))}
         </div>
       </div>
-      <div className="rounded-xl border border-slate-200 p-4">
+      <div className="rounded-xl border border-[var(--line)] p-4">
         <SkeletonBlock className="h-5 w-28" />
         <SkeletonBlock className="mt-3 h-4 w-36" />
         <div className="mt-3 grid grid-cols-2 gap-3">
@@ -372,7 +385,7 @@ export default function ProDashboard({ token }) {
           <SkeletonBlock className="h-10 w-28 rounded-xl" />
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+        <div className="rounded-2xl border border-[var(--line)] bg-white p-5 sm:p-6">
           <SkeletonBlock className="h-4 w-36" />
           <SkeletonBlock className="mt-4 h-6 w-64 max-w-full" />
           <SkeletonBlock className="mt-3 h-4 w-full" />
@@ -380,7 +393,7 @@ export default function ProDashboard({ token }) {
           <SkeletonBlock className="mt-2 h-4 w-2/3" />
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="rounded-2xl border border-[var(--line)] bg-white p-5">
           <SkeletonBlock className="h-6 w-52" />
           <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {Array.from({ length: 4 }, (_, index) => (
@@ -412,13 +425,13 @@ export default function ProDashboard({ token }) {
     <section className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-sky-700">
+          <p className="text-sm font-medium text-[var(--info-text)]">
             BTP Weather Assistant
           </p>
-          <h1 className="mt-1 text-3xl font-bold text-slate-900">
+          <h1 className="mt-1 text-3xl font-bold text-[var(--ink-900)]">
             Pro Dashboard
           </h1>
-          <p className="mt-2 text-slate-600">
+          <p className="mt-2 text-[var(--ink-600)]">
             Your saved locations, forecasts, and daily weather insight.
           </p>
         </div>
@@ -427,7 +440,7 @@ export default function ProDashboard({ token }) {
           type="button"
           onClick={() => loadDashboard({ showLoading: false })}
           disabled={refreshing}
-          className="rounded-xl border border-slate-300 px-4 py-2 font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          className="rounded-xl border border-[var(--line)] px-4 py-2 font-medium text-[var(--ink-600)] hover:bg-[var(--bg-soft)] disabled:opacity-50"
         >
           {refreshing ? "Refreshing…" : "Refresh"}
         </button>
@@ -436,7 +449,7 @@ export default function ProDashboard({ token }) {
       {error && (
         <div
           role="alert"
-          className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+          className="rounded-xl border border-[var(--danger)] bg-[var(--bg-soft)] p-4 text-sm text-[var(--danger)]"
         >
           {error}
         </div>
@@ -446,23 +459,25 @@ export default function ProDashboard({ token }) {
         <div
           role="status"
           aria-live="polite"
-          className="fixed right-4 top-4 z-50 flex max-w-md items-start gap-3 rounded-2xl border border-emerald-200 bg-white px-4 py-3 shadow-xl shadow-slate-900/10"
+          className="fixed right-4 top-4 z-50 flex max-w-md items-start gap-3 rounded-2xl border border-[var(--success)] bg-white px-4 py-3 shadow-xl shadow-black/5"
         >
           <span
-            className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"
+            className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--teal-100)] text-[var(--success)]"
             aria-hidden="true"
           >
             ✓
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-slate-900">Success</p>
-            <p className="mt-0.5 text-sm text-slate-600">{notice}</p>
+            <p className="text-sm font-semibold text-[var(--ink-900)]">
+              Success
+            </p>
+            <p className="mt-0.5 text-sm text-[var(--ink-600)]">{notice}</p>
           </div>
           <button
             type="button"
             onClick={() => setNotice("")}
             aria-label="Dismiss notification"
-            className="rounded-md px-1 text-lg leading-5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            className="rounded-md px-1 text-lg leading-5 text-[var(--ink-400)] hover:bg-[var(--teal-50)] hover:text-[var(--ink-600)]"
           >
             ×
           </button>
@@ -470,23 +485,23 @@ export default function ProDashboard({ token }) {
       )}
 
       {dashboard?.locations?.length > 0 && (
-        <article className="rounded-2xl border border-sky-200 bg-sky-50 p-5 sm:p-6">
+        <article className="rounded-2xl border border-[var(--info-border)] bg-[var(--info-bg)] p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-sky-800">
+              <p className="text-sm font-semibold text-[var(--info-text)]">
                 DAILY AI INSIGHT
               </p>
-              <h2 className="mt-1 text-xl font-semibold text-slate-900">
+              <h2 className="mt-1 text-xl font-semibold text-[var(--ink-900)]">
                 Weather outlook
               </h2>
             </div>
             {(dashboard?.dailyInsight?.options?.length || 0) > 0 && (
-              <label className="text-sm font-medium text-slate-700">
+              <label className="text-sm font-medium text-[var(--ink-600)]">
                 <span className="sr-only">Choose a city insight</span>
                 <select
                   value={selectedInsightId}
                   onChange={(event) => setSelectedInsightId(event.target.value)}
-                  className="max-w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                  className="max-w-full rounded-full border border-[var(--line)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--teal-700)] focus:ring-2 focus:ring-[var(--teal-100)]"
                 >
                   {dashboard.dailyInsight.options.map((option) => (
                     <option key={option.locationId} value={option.locationId}>
@@ -499,12 +514,12 @@ export default function ProDashboard({ token }) {
           </div>
           {(dashboard?.dailyInsight?.options?.length || 0) > 0 ? (
             <>
-              <p className="mt-3 leading-6 text-slate-700">
+              <p className="mt-3 leading-6 text-[var(--ink-600)]">
                 {dashboard.dailyInsight.options.find(
                   (option) => option.locationId === selectedInsightId,
                 )?.text || dashboard.dailyInsight.options[0].text}
               </p>
-              <p className="mt-3 text-xs text-slate-500">
+              <p className="mt-3 text-xs text-[var(--ink-600)]">
                 Daily insight ·{" "}
                 {formatDate(
                   String(dashboard.dailyInsight.date || "").slice(0, 10),
@@ -512,7 +527,7 @@ export default function ProDashboard({ token }) {
               </p>
             </>
           ) : (
-            <p className="mt-3 text-sm text-slate-700">
+            <p className="mt-3 text-sm text-[var(--ink-600)]">
               AI insight is not available yet. Check the backend terminal for an
               AI provider error, then click Refresh.
             </p>
@@ -520,8 +535,8 @@ export default function ProDashboard({ token }) {
         </article>
       )}
 
-      <article className="rounded-2xl border border-slate-200 bg-white p-5">
-        <h2 className="text-xl font-semibold text-slate-900">
+      <article className="rounded-2xl border border-[var(--line)] bg-white p-5">
+        <h2 className="text-xl font-semibold text-[var(--ink-900)]">
           Add a saved location
         </h2>
 
@@ -529,7 +544,7 @@ export default function ProDashboard({ token }) {
           onSubmit={handleSaveLocation}
           className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
         >
-          <label className="text-sm font-medium text-slate-700">
+          <label className="text-sm font-medium text-[var(--ink-600)]">
             City *
             <div className="relative mt-1">
               <input
@@ -549,12 +564,12 @@ export default function ProDashboard({ token }) {
                 autoComplete="off"
                 aria-autocomplete="list"
                 aria-expanded={showCitySuggestions && city.trim().length >= 2}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                className="w-full rounded-full border border-[var(--line)] px-3 py-2.5 outline-none focus:border-[var(--teal-700)] focus:ring-2 focus:ring-[var(--teal-100)]"
               />
               {showCitySuggestions && city.trim().length >= 2 && (
-                <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-[var(--line)] bg-white py-1 shadow-lg">
                   {citySearchLoading ? (
-                    <p className="px-3 py-2 text-sm text-slate-500">
+                    <p className="px-3 py-2 text-sm text-[var(--ink-600)]">
                       Searching cities…
                     </p>
                   ) : citySuggestions.length > 0 ? (
@@ -569,12 +584,12 @@ export default function ProDashboard({ token }) {
                           setShowCitySuggestions(false);
                           setCitySuggestions([]);
                         }}
-                        className="block w-full px-3 py-2 text-left text-sm hover:bg-sky-50"
+                        className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--info-bg)]"
                       >
-                        <span className="block font-medium text-slate-800">
+                        <span className="block font-medium text-[var(--ink-900)]">
                           {suggestion.name}
                         </span>
-                        <span className="block text-xs text-slate-500">
+                        <span className="block text-xs text-[var(--ink-600)]">
                           {[suggestion.admin1, suggestion.country]
                             .filter(Boolean)
                             .join(", ")}
@@ -582,7 +597,7 @@ export default function ProDashboard({ token }) {
                       </button>
                     ))
                   ) : (
-                    <p className="px-3 py-2 text-sm text-slate-500">
+                    <p className="px-3 py-2 text-sm text-[var(--ink-600)]">
                       No matches. You can still enter the city name manually.
                     </p>
                   )}
@@ -591,18 +606,18 @@ export default function ProDashboard({ token }) {
             </div>
           </label>
 
-          <label className="text-sm font-medium text-slate-700">
+          <label className="text-sm font-medium text-[var(--ink-600)]">
             Country
             <input
               value={country}
               onChange={(event) => setCountry(event.target.value)}
               maxLength={100}
               placeholder="e.g. Pakistan"
-              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              className="mt-1 w-full rounded-full border border-[var(--line)] px-3 py-2.5 outline-none focus:border-[var(--teal-700)] focus:ring-2 focus:ring-[var(--teal-100)]"
             />
           </label>
 
-          <label className="text-sm font-medium text-slate-700">
+          <label className="text-sm font-medium text-[var(--ink-600)]">
             Label
             <input
               value={label}
@@ -610,7 +625,7 @@ export default function ProDashboard({ token }) {
               maxLength={50}
               required
               placeholder="Home or Office"
-              className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              className="mt-1 w-full rounded-full border border-[var(--line)] px-3 py-2.5 outline-none focus:border-[var(--teal-700)] focus:ring-2 focus:ring-[var(--teal-100)]"
             />
           </label>
 
@@ -618,7 +633,7 @@ export default function ProDashboard({ token }) {
             <button
               type="submit"
               disabled={saving || !token}
-              className="w-full rounded-xl bg-sky-600 px-4 py-2.5 font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-full bg-[var(--teal-700)] px-4 py-2.5 font-semibold text-white hover:bg-[var(--teal-600)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving ? "Saving…" : "Add location"}
             </button>
@@ -628,18 +643,20 @@ export default function ProDashboard({ token }) {
 
       <div>
         <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-2xl font-bold text-slate-900">Saved locations</h2>
-          <span className="text-sm text-slate-500">
+          <h2 className="text-2xl font-bold text-[var(--ink-900)]">
+            Saved locations
+          </h2>
+          <span className="text-sm text-[var(--ink-600)]">
             {dashboard?.locations?.length || 0} saved
           </span>
         </div>
 
         {!dashboard?.locations?.length ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
-            <h3 className="text-lg font-semibold text-slate-900">
+          <div className="rounded-2xl border border-dashed border-[var(--line)] bg-white p-8 text-center">
+            <h3 className="text-lg font-semibold text-[var(--ink-900)]">
               No saved locations yet
             </h3>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-2 text-sm text-[var(--ink-600)]">
               Add a city above to see its current weather, forecast, and air
               quality.
             </p>
@@ -661,7 +678,7 @@ export default function ProDashboard({ token }) {
 
       {confirmLocation && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(6,59,64,0.4)] p-4 backdrop-blur-sm"
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget && !deletingId)
@@ -673,10 +690,10 @@ export default function ProDashboard({ token }) {
             aria-modal="true"
             aria-labelledby="remove-location-title"
             aria-describedby="remove-location-description"
-            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+            className="w-full max-w-md rounded-2xl border border-[var(--line)] bg-white p-6 shadow-2xl"
           >
             <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--bg-soft)] text-[var(--danger)]">
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
@@ -695,16 +712,16 @@ export default function ProDashboard({ token }) {
               <div>
                 <h2
                   id="remove-location-title"
-                  className="text-lg font-semibold text-slate-900"
+                  className="text-lg font-semibold text-[var(--ink-900)]"
                 >
                   Remove saved location?
                 </h2>
                 <p
                   id="remove-location-description"
-                  className="mt-2 text-sm leading-6 text-slate-600"
+                  className="mt-2 text-sm leading-6 text-[var(--ink-600)]"
                 >
                   Are you sure you want to remove{" "}
-                  <span className="font-semibold text-slate-800">
+                  <span className="font-semibold text-[var(--ink-900)]">
                     {confirmLocation.city}
                     {confirmLocation.country
                       ? `, ${confirmLocation.country}`
@@ -719,7 +736,7 @@ export default function ProDashboard({ token }) {
                 type="button"
                 disabled={Boolean(deletingId)}
                 onClick={() => setConfirmLocation(null)}
-                className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                className="rounded-xl border border-[var(--line)] px-4 py-2.5 text-sm font-semibold text-[var(--ink-600)] transition hover:bg-[var(--bg-soft)] disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -727,7 +744,7 @@ export default function ProDashboard({ token }) {
                 type="button"
                 disabled={Boolean(deletingId)}
                 onClick={() => handleDeleteLocation(confirmLocation)}
-                className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-xl bg-[var(--danger)] px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {deletingId === confirmLocation.id
                   ? "Removing…"

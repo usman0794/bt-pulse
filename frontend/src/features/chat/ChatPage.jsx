@@ -1,4 +1,5 @@
 import ReactMarkdown from "react-markdown";
+import { useEffect, useRef } from "react";
 import {
   CloudSun,
   Send,
@@ -35,6 +36,29 @@ export default function ChatPage({
   setMobileSidebarOpen,
   handleSend,
 }) {
+  const composerInputRef = useRef(null);
+  const bottomRef = useRef(null);
+
+  // Keep the latest message visible when messages change or the assistant responds.
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
+  }, [messages, chatLoading]);
+
+  // Grow the composer as text is entered, including when a suggestion fills it.
+  useEffect(() => {
+    const textarea = composerInputRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "auto";
+    const maxHeight = 120;
+    textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
+    textarea.style.overflowY =
+      textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [message]);
+
   const isWelcomeMessage =
     messages.length === 1 &&
     messages[0].role === "assistant" &&
@@ -159,6 +183,7 @@ export default function ChatPage({
                 </div>
               </div>
             )}
+            <div ref={bottomRef} aria-hidden="true" />
           </div>
         </div>
       </div>
@@ -188,6 +213,7 @@ export default function ChatPage({
 
         <form className="composer" onSubmit={handleSend}>
           <Textarea
+            ref={composerInputRef}
             value={message}
             onChange={(event) => setMessage(event.target.value)}
             placeholder="Ask about the weather in any city..."

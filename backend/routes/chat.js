@@ -598,10 +598,11 @@ ${JSON.stringify(weatherData)}`;
 
     const dbClient = await pool.connect();
     try {
-      await dbClient.query("BEGIN");
       await dbClient.query(
-        `INSERT INTO messages (conversation_id, role, content)
-         VALUES ($1, 'user', $2), ($1, 'assistant', $3)`,
+        `INSERT INTO messages (conversation_id, role, content, created_at)
+   VALUES
+     ($1, 'user', $2, clock_timestamp()),
+     ($1, 'assistant', $3, clock_timestamp())`,
         [activeConversationId, userMessage, answer],
       );
       await dbClient.query(
@@ -691,8 +692,16 @@ router.get("/conversations/:id", authenticateToken, async (req, res) => {
     const messagesResult = await pool.query(
       `SELECT id, role, content, created_at
        FROM messages
-       WHERE conversation_id = $1
-       ORDER BY created_at ASC, id ASC`,
+       WHERE conversation_id = $1      
+       ORDER BY
+        created_at ASC,
+        CASE role
+          WHEN 'user' THEN 0
+          WHEN 'assistant' THEN 1
+          ELSE 2
+        END ASC,
+        id ASC
+      `,
       [id],
     );
 

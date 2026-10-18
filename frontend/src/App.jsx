@@ -268,8 +268,34 @@ function App() {
     try {
       const result = await getConversation(token, id);
       setConversationId(result.conversation.id);
+      const historyMessages = [...(result.messages || [])];
+
+      // Older API responses may return conversation messages newest-first.
+      // Sort by their stored creation timestamp when available; otherwise
+      // retain the backend's original order rather than guessing.
+      const getMessageTime = (item) => {
+        const value =
+          item.created_at ??
+          item.createdAt ??
+          item.timestamp ??
+          item.sent_at ??
+          item.sentAt;
+        if (value == null) return null;
+        const time = new Date(value).getTime();
+        return Number.isFinite(time) ? time : null;
+      };
+
+      const messageTimes = historyMessages.map(getMessageTime);
+      const hasAllTimestamps =
+        historyMessages.length > 1 &&
+        messageTimes.every((time) => time !== null);
+
+      if (hasAllTimestamps) {
+        historyMessages.sort((a, b) => getMessageTime(a) - getMessageTime(b));
+      }
+
       setMessages(
-        (result.messages || []).map((item) => ({
+        historyMessages.map((item) => ({
           role: item.role,
           content: item.content,
         })),

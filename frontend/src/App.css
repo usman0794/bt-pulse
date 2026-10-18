@@ -3,6 +3,50 @@
 }
 
 .weather-app {
+  /* BTP Weather dashboard palette: scoped here so auth and subscription pages stay unchanged. */
+  --teal-900: #063b40;
+  --teal-700: #0b4f57;
+  --teal-600: #0e6670;
+  --teal-100: #d9f0ee;
+  --teal-50: #eef8f7;
+  --info-bg: #eaf4fc;
+  --info-border: #cfe5f5;
+  --info-text: #0b5c8e;
+  --lime-500: #a8ff00;
+  --lime-700: #5e9100;
+  --ink-900: #0f1b2d;
+  --ink-600: #4b5a6b;
+  --ink-400: #8a97a6;
+  --line: #e3e8ee;
+  --bg: #ffffff;
+  --bg-soft: #f7fafc;
+  --success: #1f9d6b;
+  --warning: #e8a317;
+  --danger: #d64545;
+
+  /* Map existing shared UI tokens to the palette without changing component logic. */
+  --background: var(--bg);
+  --foreground: var(--ink-900);
+  --card: var(--bg);
+  --card-foreground: var(--ink-900);
+  --popover: var(--bg);
+  --popover-foreground: var(--ink-900);
+  --primary: var(--teal-700);
+  --primary-foreground: #ffffff;
+  --secondary: var(--bg-soft);
+  --secondary-foreground: var(--ink-900);
+  --muted: var(--bg-soft);
+  --muted-foreground: var(--ink-600);
+  --accent: var(--teal-100);
+  --accent-foreground: var(--teal-700);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--teal-700);
+  --sidebar: var(--bg);
+  --sidebar-border: var(--line);
+  --destructive: var(--danger);
+  --radius: 0.875rem;
+
   display: flex;
   min-height: 100vh;
   min-height: 100dvh;
@@ -1174,5 +1218,272 @@
 
   .contact-form > button {
     width: 100%;
+  }
+}
+
+/* BTP Weather dashboard-only polish */
+.weather-app .app-sidebar {
+  background: var(--bg-soft);
+  border-right-color: var(--line);
+}
+.weather-app .brand-mark {
+  background: var(--teal-900);
+  color: #ffffff;
+  border-radius: 14px;
+}
+.weather-app .new-chat-button {
+  border-radius: 999px;
+  background: var(--teal-700);
+  color: #ffffff;
+}
+.weather-app .new-chat-button:hover,
+.weather-app .send-button:hover {
+  background: var(--teal-600);
+}
+.weather-app .sidebar-link {
+  color: var(--ink-600);
+  border-radius: 10px;
+}
+.weather-app .sidebar-link:hover {
+  background: var(--teal-50);
+  color: var(--teal-700);
+}
+.weather-app .sidebar-link-active {
+  border-color: transparent;
+  background: var(--teal-100);
+  color: var(--teal-700);
+}
+.weather-app .sidebar-link-active svg {
+  color: var(--teal-700);
+}
+.weather-app .topbar {
+  background: rgb(255 255 255 / 94%);
+  border-bottom: 1px solid var(--line);
+}
+.weather-app .chat-panel {
+  background: var(--bg-soft);
+}
+.weather-app .chat-scroll-area {
+  background: var(--bg-soft);
+}
+.weather-app .composer-input,
+.weather-app input,
+.weather-app select,
+.weather-app textarea {
+  color: var(--ink-900);
+}
+.weather-app .composer-input:focus-visible,
+.weather-app input:focus-visible,
+.weather-app select:focus-visible,
+.weather-app textarea:focus-visible,
+.weather-app button:focus-visible,
+.weather-app a:focus-visible {
+  outline: 2px solid var(--teal-700);
+  outline-offset: 2px;
+}
+.weather-app .send-button {
+  background: var(--teal-700);
+  color: #ffffff;
+  border-radius: 999px;
+}
+.weather-app :is(.card, .chat-bubble, .message-card) {
+  border-color: var(--line);
+  box-shadow: 0 1px 3px rgb(15 27 45 / 6%);
+}
+.weather-app .sidebar-backdrop {
+  background: rgb(6 59 64 / 40%);
+}
+.weather-app .topbar button:not(.mobile-menu-button),
+.weather-app button.secondary,
+.weather-app .secondary-button {
+  border: 1px solid var(--teal-700);
+  color: var(--teal-700);
+  background: transparent;
+}
+.weather-app .topbar button:not(.mobile-menu-button):hover,
+.weather-app button.secondary:hover,
+.weather-app .secondary-button:hover {
+  background: var(--teal-50);
+}
+
+/* Final chat composer polish: one outline and a circular icon-only send button. */
+.weather-app .composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid var(--teal-700);
+  border-radius: 18px;
+  background: var(--bg);
+  box-shadow: 0 1px 3px rgb(15 27 45 / 6%);
+}
+
+.weather-app .composer-input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  max-height: 120px;
+  padding: 9px 12px;
+  resize: none;
+  overflow-y: auto;
+  border: 0 !important;
+  border-radius: 12px;
+  outline: none;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.weather-app .composer-input:focus,
+.weather-app .composer-input:focus-visible {
+  outline: none;
+  box-shadow: none !important;
+}
+
+.weather-app .send-button {
+  display: inline-flex;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  gap: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+.weather-app .send-button:hover {
+  background: #2563eb;
+}
+
+.weather-app .send-button span {
+  display: none;
+}
+
+.weather-app .send-button svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 640px) {
+  .weather-app .composer {
+    gap: 6px;
+    padding: 5px;
+  }
+
+  .weather-app .send-button {
+    flex-basis: 42px;
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+  }
+}
+
+/* Sticky chat composer: messages scroll above while the input stays visible. */
+.weather-app .chat-panel {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.weather-app .chat-scroll-area {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.weather-app .composer-area {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  flex: 0 0 auto;
+  width: 100%;
+  padding-top: 10px;
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
+  background: var(--bg-soft);
+}
+
+/* One outer composer border, a simple input, and a circular teal arrow button. */
+.weather-app .composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid var(--teal-700);
+  border-radius: 16px;
+  background: var(--bg);
+  box-shadow: 0 1px 3px rgb(15 27 45 / 6%);
+}
+
+.weather-app .composer-input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  max-height: 120px;
+  padding: 9px 12px;
+  resize: none;
+  overflow-y: auto;
+  border: 0 !important;
+  border-radius: 10px;
+  outline: none;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.weather-app .composer-input:focus,
+.weather-app .composer-input:focus-visible {
+  outline: none;
+  box-shadow: none !important;
+}
+
+.weather-app .send-button {
+  display: inline-flex;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  gap: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--teal-700);
+  color: #ffffff;
+}
+
+.weather-app .send-button:hover {
+  background: var(--teal-600);
+}
+
+.weather-app .send-button span {
+  display: none;
+}
+
+.weather-app .send-button svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 640px) {
+  .weather-app .composer-area {
+    padding: 8px 12px max(12px, env(safe-area-inset-bottom));
+  }
+
+  .weather-app .composer {
+    gap: 6px;
+    padding: 5px;
+  }
+
+  .weather-app .send-button {
+    flex-basis: 42px;
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
   }
 }
