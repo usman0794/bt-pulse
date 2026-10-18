@@ -9,7 +9,8 @@ import {
   getConversation,
 } from "./services/api";
 
-import { CloudSun, Info, LoaderCircle, Menu } from "lucide-react";
+import { Info, LoaderCircle, Menu } from "lucide-react";
+import { FadeLoader } from "react-spinners";
 import { Button } from "@/components/ui/button";
 import AppSidebar from "./components/layout/AppSidebar";
 import AuthPage from "./features/auth/AuthPage";
@@ -609,32 +610,13 @@ function App() {
 
   if (authChecking || (user && restoringConversation)) {
     return (
-      <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#f5f9fb] p-6">
-        <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-teal-100/60 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-28 -right-20 h-80 w-80 rounded-full bg-cyan-100/60 blur-3xl" />
-
-        <div
-          className="relative flex w-full max-w-sm flex-col items-center rounded-3xl border border-white/80 bg-white/90 px-8 py-10 text-center shadow-xl shadow-slate-200/60 backdrop-blur"
-          role="status"
-          aria-live="polite"
-        >
-          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#064e54] text-white shadow-lg shadow-teal-900/15">
-            <CloudSun size={32} strokeWidth={1.8} />
-          </div>
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-            BTP Weather
-          </h1>
-          <p className="mt-2 text-sm text-slate-500">
-            Your personal weather workspace
-          </p>
-          <div className="mt-7 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full w-2/5 animate-pulse rounded-full bg-[#0e6670]" />
-          </div>
-          <div className="mt-4 flex items-center gap-2 text-xs font-medium text-slate-500">
-            <LoaderCircle size={14} className="animate-spin text-[#0e6670]" />
-            <span>Getting things ready</span>
-          </div>
-        </div>
+      <main
+        className="flex min-h-screen items-center justify-center bg-[#f5f9fb]"
+        role="status"
+        aria-label="Loading BTP Weather"
+        aria-live="polite"
+      >
+        <FadeLoader color="#36d7b7" />
       </main>
     );
   }
