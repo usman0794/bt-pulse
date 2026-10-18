@@ -1,0 +1,25 @@
+{
+  "id": "/",
+  "name": "BTP Weather",
+  "short_name": "BTP Weather",
+  "description": "Your personal AI weather assistant",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F7FAFC",
+  "theme_color": "#063B40",
+  "icons": [
+    {
+      "src": "/btp-weather-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/btp-weather-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

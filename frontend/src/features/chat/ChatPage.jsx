@@ -249,7 +249,7 @@ export default function ChatPage({
         </form>
 
         <p className="composer-note">
-          BTP Weather Assistant · AI-generated responses may need verification
+          BTP Weather Assistant · Made a mistakes check imp info.
         </p>
       </div>
     </section>

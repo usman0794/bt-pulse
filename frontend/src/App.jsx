@@ -74,6 +74,7 @@ function App() {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([WELCOME_MESSAGE]);
   const [conversationId, setConversationId] = useState(null);
+  const [restoringConversation, setRestoringConversation] = useState(true);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState("");
   const [conversations, setConversations] = useState([]);
@@ -90,6 +91,27 @@ function App() {
     const savedView = localStorage.getItem("btp_active_view");
     return validViews.includes(savedView) ? savedView : "chat";
   });
+  useEffect(() => {
+    const titles = {
+      chat: "Weather Chat",
+      dashboard: "Pro Dashboard",
+      billing: "Plan & Billing",
+      contact: "Contact Us",
+    };
+
+    document.title = titles[activeView] || "BTP Weather";
+  }, [activeView]);
+
+  useEffect(() => {
+    const titles = {
+      chat: "Weather Chat",
+      dashboard: "Pro Dashboard",
+      billing: "Plan & Billing",
+      contact: "Contact Us",
+    };
+
+    document.title = titles[activeView] || "BTP Weather";
+  }, [activeView]);
 
   function setActiveView(view) {
     if (!validViews.includes(view)) return;
@@ -157,6 +179,84 @@ function App() {
       cancelled = true;
     };
   }, [token]);
+
+  // Restore the last active conversation after the user's session is verified.
+  // Keep the welcome screen hidden until this check has completed.
+  useEffect(() => {
+    if (authChecking) return;
+
+    if (!token || !user) {
+      setRestoringConversation(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function restoreConversation() {
+      setRestoringConversation(true);
+      const savedConversationId = localStorage.getItem(
+        "btp_active_conversation_id",
+      );
+
+      if (!savedConversationId) {
+        setRestoringConversation(false);
+        return;
+      }
+
+      try {
+        const result = await getConversation(token, savedConversationId);
+        if (cancelled) return;
+
+        const restoredMessages = [...(result.messages || [])];
+        const getMessageTime = (item) => {
+          const value =
+            item.created_at ??
+            item.createdAt ??
+            item.timestamp ??
+            item.sent_at ??
+            item.sentAt;
+          if (value == null) return null;
+          const time = new Date(value).getTime();
+          return Number.isFinite(time) ? time : null;
+        };
+        const times = restoredMessages.map(getMessageTime);
+        if (
+          restoredMessages.length > 1 &&
+          times.every((time) => time !== null)
+        ) {
+          restoredMessages.sort(
+            (a, b) => getMessageTime(a) - getMessageTime(b),
+          );
+        }
+
+        setConversationId(result.conversation.id);
+        setMessages(
+          restoredMessages.map((item) => ({
+            role: item.role,
+            content: item.content,
+          })),
+        );
+      } catch (error) {
+        if (!cancelled) {
+          // Remove stale IDs so they are not retried on every refresh.
+          localStorage.removeItem("btp_active_conversation_id");
+          setConversationId(null);
+          setMessages([WELCOME_MESSAGE]);
+          console.warn(
+            "Could not restore the last conversation:",
+            error.message,
+          );
+        }
+      } finally {
+        if (!cancelled) setRestoringConversation(false);
+      }
+    }
+
+    restoreConversation();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, user, authChecking]);
 
   async function handleAuthSubmit(event) {
     event.preventDefault();
@@ -229,6 +329,12 @@ function App() {
       });
 
       setConversationId(result.conversationId);
+      if (result.conversationId) {
+        localStorage.setItem(
+          "btp_active_conversation_id",
+          result.conversationId,
+        );
+      }
       setMessages((previous) => [
         ...previous,
         { role: "assistant", content: result.answer },
@@ -268,6 +374,10 @@ function App() {
     try {
       const result = await getConversation(token, id);
       setConversationId(result.conversation.id);
+      localStorage.setItem(
+        "btp_active_conversation_id",
+        result.conversation.id,
+      );
       const historyMessages = [...(result.messages || [])];
 
       // Older API responses may return conversation messages newest-first.
@@ -309,6 +419,7 @@ function App() {
 
   function handleNewChat() {
     setActiveView("chat");
+    localStorage.removeItem("btp_active_conversation_id");
     setConversationId(null);
     setMessages([WELCOME_MESSAGE]);
     setMessage("");
@@ -320,6 +431,7 @@ function App() {
   function handleLogout() {
     localStorage.removeItem("btp_token");
     localStorage.removeItem("btp_active_view");
+    localStorage.removeItem("btp_active_conversation_id");
     setActiveView("chat");
     setToken("");
     setUser(null);
@@ -486,17 +598,33 @@ function App() {
     />
   );
 
-  if (authChecking) {
+  if (authChecking || (user && restoringConversation)) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
+      <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#f5f9fb] p-6">
+        <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-teal-100/60 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-28 -right-20 h-80 w-80 rounded-full bg-cyan-100/60 blur-3xl" />
+
         <div
-          className="flex flex-col items-center gap-4 text-center"
+          className="relative flex w-full max-w-sm flex-col items-center rounded-3xl border border-white/80 bg-white/90 px-8 py-10 text-center shadow-xl shadow-slate-200/60 backdrop-blur"
           role="status"
           aria-live="polite"
         >
-          <CloudSun size={40} className="text-primary" />
-          <LoaderCircle size={24} className="animate-spin text-primary" />
-          <p className="text-sm text-slate-600">Restoring your session...</p>
+          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#064e54] text-white shadow-lg shadow-teal-900/15">
+            <CloudSun size={32} strokeWidth={1.8} />
+          </div>
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+            BTP Weather
+          </h1>
+          <p className="mt-2 text-sm text-slate-500">
+            Your personal weather workspace
+          </p>
+          <div className="mt-7 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full w-2/5 animate-pulse rounded-full bg-[#0e6670]" />
+          </div>
+          <div className="mt-4 flex items-center gap-2 text-xs font-medium text-slate-500">
+            <LoaderCircle size={14} className="animate-spin text-[#0e6670]" />
+            <span>Getting things ready</span>
+          </div>
         </div>
       </main>
     );
