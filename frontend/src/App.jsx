@@ -129,6 +129,7 @@ function App() {
   const [billingAction, setBillingAction] = useState("");
   const [billingError, setBillingError] = useState("");
   const [billingNotice, setBillingNotice] = useState("");
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [contactForm, setContactForm] = useState({
     name: "",
     email: "",
@@ -519,11 +520,7 @@ function App() {
   }
 
   async function scheduleCancellation() {
-    const confirmed = window.confirm(
-      "Schedule cancellation at the end of your current billing period? Your Pro access should remain active until then.",
-    );
-    if (!confirmed) return;
-
+    setCancelDialogOpen(false);
     setBillingAction("cancel");
     setBillingError("");
     setBillingNotice("");
@@ -648,6 +645,63 @@ function App() {
 
   return (
     <main className="weather-app">
+      {cancelDialogOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !billingAction) {
+              setCancelDialogOpen(false);
+            }
+          }}
+        >
+          <section
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl sm:p-7"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cancel-subscription-title"
+            aria-describedby="cancel-subscription-description"
+          >
+            <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
+              <Info size={24} aria-hidden="true" />
+            </div>
+            <h2
+              id="cancel-subscription-title"
+              className="text-xl font-semibold tracking-tight text-slate-900"
+            >
+              Cancel your Pro subscription?
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Your BTP Weather Pro access will remain active until the end of
+              your current billing period. You won’t be charged for another
+              period after cancellation takes effect.
+            </p>
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                className={outlineBtn}
+                onClick={() => setCancelDialogOpen(false)}
+                disabled={Boolean(billingAction)}
+              >
+                Keep Pro
+              </Button>
+              <Button
+                type="button"
+                className="rounded-full bg-[#9B2C2C] px-5 text-white hover:bg-[#7F1D1D] focus-visible:ring-2 focus-visible:ring-red-700 focus-visible:ring-offset-2"
+                onClick={scheduleCancellation}
+                disabled={Boolean(billingAction)}
+              >
+                {billingAction === "cancel" ? (
+                  <LoaderCircle size={16} className="animate-spin" />
+                ) : null}
+                Confirm cancellation
+              </Button>
+            </div>
+          </section>
+        </div>
+      )}
+
       {mobileSidebarOpen && (
         <button
           className="sidebar-backdrop"
