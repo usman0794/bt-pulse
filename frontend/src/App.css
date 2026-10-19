@@ -1870,3 +1870,41 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Fix scrolling on billing and contact pages. These pages share .chat-panel,
+   but their content is inside .billing-content rather than .chat-scroll-area. */
+.weather-app .billing-panel {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.weather-app .billing-panel > .billing-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 760px) {
+  .weather-app .billing-panel > .billing-content {
+    padding-bottom: max(40px, env(safe-area-inset-bottom));
+  }
+}
+
+/* Hide scrollbar but keep scrolling enabled */
+.chat-scroll-area,
+.billing-panel,
+.billing-content {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.chat-scroll-area::-webkit-scrollbar,
+.billing-panel::-webkit-scrollbar,
+.billing-content::-webkit-scrollbar {
+  display: none;
+}
