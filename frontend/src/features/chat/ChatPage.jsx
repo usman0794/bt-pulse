@@ -39,15 +39,22 @@ export default function ChatPage({
   handleSend,
 }) {
   const composerInputRef = useRef(null);
-  const bottomRef = useRef(null);
+  const chatScrollRef = useRef(null);
 
-  // Keep the latest message visible when messages change or the assistant responds.
+  // Scroll only the messages pane, never the document or the composer.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "end",
+    const scrollArea = chatScrollRef.current;
+    if (!scrollArea) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      scrollArea.scrollTo({
+        top: scrollArea.scrollHeight,
+        behavior: "smooth",
+      });
     });
-  }, [messages, chatLoading]);
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [messages, chatLoading, conversationId]);
 
   // Grow the composer as text is entered, including when a suggestion fills it.
   useEffect(() => {
@@ -91,7 +98,7 @@ export default function ChatPage({
         </div>
       </header>
 
-      <div className="chat-scroll-area">
+      <div className="chat-scroll-area" ref={chatScrollRef}>
         <div className="chat-content">
           {isWelcomeMessage && (
             <div className="welcome-heading">
@@ -186,7 +193,6 @@ export default function ChatPage({
                 </div>
               </div>
             )}
-            <div ref={bottomRef} aria-hidden="true" />
           </div>
         </div>
       </div>

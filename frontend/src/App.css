@@ -1384,20 +1384,26 @@
   }
 }
 
-/* Sticky chat composer: messages scroll above while the input stays visible. */
+/* Keep the chat viewport bounded so only the message pane scrolls. */
 .weather-app .chat-panel {
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .weather-app .chat-scroll-area {
   flex: 1 1 auto;
   min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
 }
 
 .weather-app .composer-area {
-  position: sticky;
-  bottom: 0;
+  position: relative;
   z-index: 10;
   flex: 0 0 auto;
   width: 100%;

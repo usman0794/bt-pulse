@@ -20,6 +20,91 @@ const UUID_PATTERN =
 const MAX_CITIES = 3;
 const HISTORY_LIMIT = 6;
 
+const FREE_DAILY_PROMPT_LIMIT = 5;
+const USAGE_TIME_ZONE = "Asia/Karachi";
+
+// Reserve one Free-plan prompt atomically per user and Pakistan-local date.
+// The advisory lock also protects the first insert when no usage row exists yet.
+async function reserveFreePrompt(userId) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const dateResult = await client.query(
+      "SELECT (NOW() AT TIME ZONE $1)::date::text AS usage_date",
+      [USAGE_TIME_ZONE],
+    );
+    const usageDate = dateResult.rows[0].usage_date;
+    const lockKey = `${userId}:${usageDate}`;
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+      [lockKey],
+    );
+
+    const usageResult = await client.query(
+      `SELECT id, message_count
+       FROM usage_records
+       WHERE user_id = $1 AND usage_date = $2
+       ORDER BY id
+       LIMIT 1`,
+      [userId, usageDate],
+    );
+    const used = Number(usageResult.rows[0]?.message_count || 0);
+    if (used >= FREE_DAILY_PROMPT_LIMIT) {
+      await client.query("COMMIT");
+      return { allowed: false, used, remaining: 0, usageDate };
+    }
+
+    if (usageResult.rowCount > 0) {
+      await client.query(
+        "UPDATE usage_records SET message_count = $1 WHERE id = $2",
+        [used + 1, usageResult.rows[0].id],
+      );
+    } else {
+      await client.query(
+        `INSERT INTO usage_records (user_id, usage_date, message_count)
+         VALUES ($1, $2, 1)`,
+        [userId, usageDate],
+      );
+    }
+    await client.query("COMMIT");
+    return {
+      allowed: true,
+      used: used + 1,
+      remaining: Math.max(0, FREE_DAILY_PROMPT_LIMIT - used - 1),
+      usageDate,
+    };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// Refund a reserved prompt if the chat request fails before returning a reply.
+async function refundFreePrompt(userId, usageDate) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+      [`${userId}:${usageDate}`],
+    );
+    await client.query(
+      `UPDATE usage_records
+       SET message_count = GREATEST(message_count - 1, 0)
+       WHERE user_id = $1 AND usage_date = $2`,
+      [userId, usageDate],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 // Fixed replies (no AI call needed).
 const REPLIES = {
   greeting:
@@ -101,6 +186,10 @@ ${JSON.stringify(weatherData)}`;
 
 // POST /api/chat
 router.post("/", authenticateToken, async (req, res) => {
+  let reservedFreePrompt = null;
+  let userIdForUsage = null;
+  let isPro = false;
+  let promptUsage = null;
   try {
     await ensureLastCityColumn();
 
@@ -132,6 +221,7 @@ router.post("/", authenticateToken, async (req, res) => {
     }
 
     const userMessage = message.trim();
+    userIdForUsage = req.user.id;
     let activeConversationId = conversationId || null;
     let history = [];
     let previousCity = null; // remembered per conversation (conversations.last_city)
@@ -154,12 +244,46 @@ router.post("/", authenticateToken, async (req, res) => {
          ORDER BY created_at DESC, id DESC LIMIT $2`,
         [activeConversationId, HISTORY_LIMIT],
       );
-      history = historyResult.rows
-        .reverse()
-        .map((m) => ({
-          role: m.role,
-          content: String(m.content).slice(0, 600),
-        }));
+      history = historyResult.rows.reverse().map((m) => ({
+        role: m.role,
+        content: String(m.content).slice(0, 600),
+      }));
+    }
+
+    userIdForUsage = req.user.id;
+
+    // Read the current plan from PostgreSQL rather than trusting client input.
+    const userPlanResult = await pool.query(
+      "SELECT plan FROM users WHERE id = $1 LIMIT 1",
+      [req.user.id],
+    );
+    if (userPlanResult.rowCount === 0) {
+      return res
+        .status(401)
+        .json({ success: false, message: "User account not found." });
+    }
+    const currentPlan = String(
+      userPlanResult.rows[0].plan || "free",
+    ).toLowerCase();
+    isPro = currentPlan === "pro";
+
+    if (!isPro) {
+      promptUsage = await reserveFreePrompt(req.user.id);
+      if (!promptUsage.allowed) {
+        return res.status(429).json({
+          success: false,
+          code: "DAILY_PROMPT_LIMIT_REACHED",
+          message:
+            "You've used all 5 free AI prompts for today. Your prompts reset at midnight Pakistan time. Upgrade to Pro for unlimited prompts.",
+          plan: "free",
+          dailyPromptLimit: FREE_DAILY_PROMPT_LIMIT,
+          promptsUsed: promptUsage.used,
+          promptsRemaining: 0,
+          usageDate: promptUsage.usageDate,
+          upgradeRequired: true,
+        });
+      }
+      reservedFreePrompt = promptUsage;
     }
 
     const lastAssistantMessage =
@@ -273,8 +397,23 @@ router.post("/", authenticateToken, async (req, res) => {
       conversationId: activeConversationId,
       answer,
       weather: weatherData,
+      plan: isPro ? "pro" : "free",
+      dailyPromptLimit: isPro ? null : FREE_DAILY_PROMPT_LIMIT,
+      promptsUsed: isPro ? null : promptUsage.used,
+      promptsRemaining: isPro ? null : promptUsage.remaining,
+      usageDate: isPro ? null : promptUsage.usageDate,
     });
   } catch (error) {
+    if (reservedFreePrompt && userIdForUsage) {
+      try {
+        await refundFreePrompt(userIdForUsage, reservedFreePrompt.usageDate);
+      } catch (refundError) {
+        console.error(
+          "Could not refund failed chat prompt:",
+          refundError.message,
+        );
+      }
+    }
     console.error("Chat request failed:", error);
 
     if (error.status === 413 || error.status === 429) {
