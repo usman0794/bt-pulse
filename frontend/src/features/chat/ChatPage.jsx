@@ -1,4 +1,5 @@
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useEffect, useRef } from "react";
 import {
   CloudSun,
@@ -9,6 +10,7 @@ import {
   Menu,
   LoaderCircle,
 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -128,6 +130,7 @@ export default function ChatPage({
                   </div>
                   <div className="markdown-content">
                     <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
                       components={{
                         table: ({ children }) => (
                           <div className="markdown-table-wrapper">

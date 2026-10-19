@@ -5,19 +5,40 @@ const {
   generateChatResponse,
   extractWeatherIntent,
 } = require("../services/longcat");
+const {
+  getWeatherData,
+  trimForecast,
+  checkDateWindow,
+  getPakistanDate,
+} = require("../services/weather");
 
 const router = express.Router();
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const WEATHER_PATTERN =
-  /\b(weather|temperature|forecast|rain|raining|rainy|humidity|wind|snow|sunny|cloudy|conditions|hot|cold|precipitation|umbrella)\b/i;
+const MAX_CITIES = 3;
+const HISTORY_LIMIT = 6;
 
-const FORECAST_PATTERN =
-  /\b(forecast|rain|raining|rainy|precipitation|tomorrow|today|tonight|afternoon|evening|morning|next week|this week|will it rain)\b/i;
+// Fixed replies (no AI call needed).
+const REPLIES = {
+  greeting:
+    "Hello! I'm your BTP Weather Assistant. Ask me about current weather, forecasts, temperature, or rain chances for any city.",
+  thanks: "You're welcome! Ask me anytime about the weather in any city.",
+  other:
+    'I can only help with weather: current conditions, temperature, rain chances and forecasts for any city (up to 5 days ahead). Try "Lahore weather tomorrow evening" or "compare weather of Lahore and Karachi".',
+  outOfRange:
+    'I can only share weather for right now and the next 5 days, not past dates or times. Try asking about today, tomorrow, or "the next 3 hours" for any city, or compare up to three cities.',
+  askCity:
+    "Which city would you like the weather for? You can name up to three cities to compare.",
+  notFound: (names) =>
+    `I couldn't find ${names.join(", ")}. Please check the spelling or send a nearby city name.`,
+};
 
-const INVALID_CITY_NAMES = new Set([
+// Our own "ask for a city" replies; used to recognise a city-only follow-up.
+const PENDING_CITY_PATTERN = /which city|check the spelling/i;
+
+const NOT_A_CITY = new Set([
   "today",
   "tomorrow",
   "tonight",
@@ -35,324 +56,54 @@ const INVALID_CITY_NAMES = new Set([
   "evening",
 ]);
 
-function isValidCityInput(value) {
+function isValidCity(value) {
   return (
     typeof value === "string" &&
     value.trim().length > 0 &&
     value.trim().length <= 100 &&
-    !INVALID_CITY_NAMES.has(value.trim().toLowerCase())
+    !NOT_A_CITY.has(value.trim().toLowerCase())
   );
 }
 
-function extractCity(message) {
-  const text = message.trim();
-
-  const timeWords =
-    /\b(today|tomorrow|tonight|now|currently|right now|this week|next week|this morning|this afternoon|this evening|in the morning|in the afternoon|in the evening|after\s+\d+\s+(?:minutes?|hours?|days?)|in\s+\d+\s+(?:minutes?|hours?|days?))\b/gi;
-
-  const cleanedMessage = text
-    .replace(timeWords, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const patterns = [
-    /\b(?:weather|temperature|forecast|rain|raining|humidity|wind|snow|sunny|cloudy|conditions)\s+(?:in|for|at)\s+([a-zA-Z][a-zA-Z\s-]{0,60}?)(?=\s+[?!.,]|[?!.,]|$)/i,
-    /\b(?:in|for)\s+([a-zA-Z][a-zA-Z\s-]{0,60}?)\s+(?:weather|forecast|temperature)\b/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = cleanedMessage.match(pattern);
-
-    if (match) {
-      const city = match[1].trim().replace(/\s+/g, " ");
-
-      if (
-        !/^(today|tomorrow|tonight|now|currently|right now|this week|next week)$/i.test(
-          city,
-        )
-      ) {
-        return city;
-      }
-    }
+// Adds conversations.last_city once (safe to run repeatedly).
+let columnReady = null;
+function ensureLastCityColumn() {
+  if (!columnReady) {
+    columnReady = pool
+      .query(
+        "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS last_city TEXT",
+      )
+      .catch((error) => {
+        console.error("Could not ensure last_city column:", error.message);
+        columnReady = null;
+      });
   }
-
-  return null;
+  return columnReady;
 }
 
-function resolveRelativeTargetTimestamp(relativeTime) {
-  if (typeof relativeTime !== "string" || !relativeTime.trim()) {
-    return null;
-  }
+function buildSystemMessage(weatherData, today, notFound) {
+  const notFoundNote = notFound.length
+    ? `\nThese places could not be found: ${notFound.join(", ")}. Say so briefly and do not invent data for them.`
+    : "";
 
-  const match = relativeTime.match(
-    /\b(?:in|after)\s+(\d+(?:\.\d+)?)\s+(minutes?|hours?|days?)\b/i,
-  );
-
-  if (!match) return null;
-
-  const amount = Number(match[1]);
-  const unit = match[2].toLowerCase();
-
-  if (!Number.isFinite(amount) || amount <= 0) return null;
-
-  const multiplier = unit.startsWith("minute")
-    ? 60_000
-    : unit.startsWith("hour")
-      ? 3_600_000
-      : 86_400_000;
-
-  return Date.now() + amount * multiplier;
-}
-
-function selectNearestForecastEntry(forecastEntries, targetTimestamp) {
-  if (!Array.isArray(forecastEntries) || forecastEntries.length === 0) {
-    return null;
-  }
-
-  const MAX_DISTANCE_MS = 3 * 60 * 60 * 1000;
-  let nearestEntry = null;
-  let nearestDistance = Infinity;
-
-  for (const entry of forecastEntries) {
-    const timestamp = Number(entry.timestampUTC) * 1000;
-
-    if (!Number.isFinite(timestamp)) continue;
-
-    const distance = Math.abs(timestamp - targetTimestamp);
-
-    if (distance < nearestDistance) {
-      nearestDistance = distance;
-      nearestEntry = entry;
-    }
-  }
-
-  return nearestDistance <= MAX_DISTANCE_MS ? nearestEntry : null;
-}
-
-function formatPakistanTime(unixTimestamp) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Karachi",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).format(new Date(unixTimestamp * 1000));
-}
-
-function getPakistanDate(offsetDays = 0) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Karachi",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-
-  const values = Object.fromEntries(
-    parts.map(({ type, value }) => [type, value]),
-  );
-
-  const date = new Date(
-    Date.UTC(
-      Number(values.year),
-      Number(values.month) - 1,
-      Number(values.day) + offsetDays,
-    ),
-  );
-
-  return date.toISOString().slice(0, 10);
-}
-
-function getDailyRainSummary(forecastEntries, targetDate) {
-  const dayEntries = forecastEntries.filter((entry) => {
-    // dateTimePKT is formatted as YYYY-MM-DD, HH:mm.
-    const entryDate = entry.dateTimePKT.slice(0, 10);
-    return entryDate === targetDate;
-  });
-
-  if (dayEntries.length === 0) {
-    return {
-      date: targetDate,
-      available: false,
-      message: "No forecast entries are available for this date.",
-    };
-  }
-
-  const validProbabilities = dayEntries
-    .map((entry) => entry.rainProbability)
-    .filter(
-      (probability) =>
-        typeof probability === "number" && Number.isFinite(probability),
-    );
-
-  return {
-    date: targetDate,
-    available: true,
-    intervalsAvailable: dayEntries.length,
-    intervalsWithRainProbability: validProbabilities.length,
-    peakRainProbability:
-      validProbabilities.length > 0 ? Math.max(...validProbabilities) : null,
-    intervals: dayEntries.map((entry) => ({
-      timePKT: entry.dateTimePKT,
-      rainProbability: entry.rainProbability,
-      description: entry.description,
-    })),
-    interpretation:
-      "Peak probability is the highest individual forecast-interval probability, not the probability of rain at any time during the entire day.",
-  };
-}
-
-function getForecastEntriesForPeriod(forecastEntries, targetDate, period) {
-  const timeRanges = {
-    morning: { start: 6, end: 12 },
-    afternoon: { start: 12, end: 17 },
-    evening: { start: 17, end: 21 },
-  };
-
-  const selectedPeriod = period.toLowerCase();
-
-  if (selectedPeriod === "night") {
-    const nextDate = new Date(`${targetDate}T12:00:00Z`);
-    nextDate.setUTCDate(nextDate.getUTCDate() + 1);
-    const followingDate = nextDate.toISOString().slice(0, 10);
-
-    return forecastEntries.filter((entry) => {
-      const [date, time] = entry.dateTimePKT.split(", ");
-      const hour = Number(time?.split(":")[0]);
-
-      return (
-        (date === targetDate && hour >= 21 && hour <= 23) ||
-        (date === followingDate && hour >= 0 && hour < 6)
-      );
-    });
-  }
-
-  const range = timeRanges[selectedPeriod];
-
-  if (!range) {
-    return [];
-  }
-
-  return forecastEntries.filter((entry) => {
-    const [date, time] = entry.dateTimePKT.split(", ");
-    const hour = Number(time?.split(":")[0]);
-
-    return date === targetDate && hour >= range.start && hour < range.end;
-  });
-}
-
-async function getWeatherData(city, forecast = false) {
-  const apiKey = process.env.OPENWEATHER_API_KEY;
-
-  if (!apiKey) {
-    const error = new Error("Weather API is not configured.");
-    error.status = 502;
-    throw error;
-  }
-
-  const endpoint = forecast ? "forecast" : "weather";
-
-  const params = new URLSearchParams({
-    q: city,
-    appid: apiKey,
-    units: "metric",
-  });
-
-  console.log("[Weather debug]", {
-    city,
-    forecast,
-    endpoint,
-  });
-
-  const response = await fetch(
-    `https://api.openweathermap.org/data/2.5/${endpoint}?${params}`,
-  );
-
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    console.log("[OpenWeather error]", {
-      status: response.status,
-      response: data,
-    });
-    if (response.status === 404) {
-      const error = new Error("City not found. Please check the city name.");
-      error.status = 404;
-      throw error;
-    }
-
-    if (response.status === 401) {
-      const error = new Error("Weather provider rejected the API key.");
-      error.status = 502;
-      throw error;
-    }
-
-    const error = new Error("Unable to retrieve weather data.");
-    error.status = 502;
-    throw error;
-  }
-
-  if (forecast) {
-    const forecastEntries = data.list.map((item) => {
-      const pop =
-        typeof item.pop === "number" && Number.isFinite(item.pop)
-          ? Math.min(1, Math.max(0, item.pop))
-          : null;
-
-      return {
-        timestampUTC: item.dt,
-        dateTimeUTC: item.dt_txt,
-        dateTimePKT: formatPakistanTime(item.dt),
-
-        temperatureC: item.main.temp,
-        feelsLikeC: item.main.feels_like,
-        humidity: item.main.humidity,
-        description: item.weather?.[0]?.description ?? "Unavailable",
-        windSpeedMps: item.wind.speed,
-
-        rainProbability: pop === null ? null : Math.round(pop * 100),
-      };
-    });
-
-    const availableDates = [
-      ...new Set(
-        forecastEntries.map((entry) => entry.dateTimePKT.slice(0, 10)),
-      ),
-    ];
-
-    const dailyRainSummaries = availableDates.map((date) =>
-      getDailyRainSummary(forecastEntries, date),
-    );
-
-    return {
-      type: "forecast",
-      city: data.city.name,
-      country: data.city.country,
-      timezone: "Asia/Karachi",
-      forecast: forecastEntries,
-      dailyRainSummaries,
-    };
-  }
-
-  return {
-    type: "current",
-    city: data.name,
-    country: data.sys.country,
-    timezone: "Asia/Karachi",
-    temperatureC: data.main.temp,
-    feelsLikeC: data.main.feels_like,
-    humidity: data.main.humidity,
-    description: data.weather[0].description,
-    windSpeedMps: data.wind.speed,
-    updatedAtUTC: new Date(data.dt * 1000).toISOString(),
-    updatedAtPKT: formatPakistanTime(data.dt),
-  };
+  return `You are BTP Weather Assistant, a chatbot for weather questions only.
+Answer the latest question briefly using ONLY the weather data below. Never invent numbers, dates or places.
+Today's date is ${today}. Units: Celsius, wind in metres per second. Times are the city's local time (24-hour).
+Forecast entries are about 3 hours apart, so say "around" for times and never present them as exact hourly values. If "note" says approximate, mention that.
+Rain probability is a chance, not a guarantee. Never add probabilities together or treat missing data as 0%.
+For "daily" data, write one line per day using its "label", with low-high and peak rain chance. Do not add, skip or rename days.
+Use plain text only: no tables and no markdown symbols (* # | - _). With several cities write one line per city (name, temperature, feels like, humidity, sky, wind), then one short line comparing them. Otherwise answer in 2-5 short lines.
+If the data type is "current", describe current conditions only and never mention forecasts or missing forecast data.
+If entries are empty or data is unavailable, say the forecast is not available for that time.${notFoundNote}
+Weather data:
+${JSON.stringify(weatherData)}`;
 }
 
 // POST /api/chat
 router.post("/", authenticateToken, async (req, res) => {
   try {
+    await ensureLastCityColumn();
+
     const { message, city, forecast, conversationId } = req.body;
 
     if (
@@ -383,10 +134,11 @@ router.post("/", authenticateToken, async (req, res) => {
     const userMessage = message.trim();
     let activeConversationId = conversationId || null;
     let history = [];
+    let previousCity = null; // remembered per conversation (conversations.last_city)
 
     if (activeConversationId) {
       const existing = await pool.query(
-        "SELECT id FROM conversations WHERE id = $1 AND user_id = $2",
+        "SELECT last_city FROM conversations WHERE id = $1 AND user_id = $2",
         [activeConversationId, req.user.id],
       );
       if (existing.rowCount === 0) {
@@ -394,189 +146,96 @@ router.post("/", authenticateToken, async (req, res) => {
           .status(404)
           .json({ success: false, message: "Conversation not found." });
       }
+      previousCity = existing.rows[0].last_city || null;
+
       const historyResult = await pool.query(
         `SELECT role, content FROM messages
          WHERE conversation_id = $1
-         ORDER BY created_at DESC, id DESC LIMIT 20`,
-        [activeConversationId],
+         ORDER BY created_at DESC, id DESC LIMIT $2`,
+        [activeConversationId, HISTORY_LIMIT],
       );
-      history = historyResult.rows.reverse();
+      history = historyResult.rows
+        .reverse()
+        .map((m) => ({
+          role: m.role,
+          content: String(m.content).slice(0, 600),
+        }));
     }
 
     const lastAssistantMessage =
-      [...history].reverse().find((item) => item.role === "assistant")
-        ?.content || "";
-    const pendingCityQuestion =
-      /which city|what city|city would you like|please (?:mention|provide) a city|which location/i.test(
-        lastAssistantMessage,
-      );
-
-    // Recover the last known city from user requests and assistant answers.
-    // We deliberately inspect both roles because a user may have replied with
-    // a city name alone, and the assistant may have confirmed the resolved city.
-    let previousCity = null;
-    for (let i = history.length - 1; i >= 0; i--) {
-      const item = history[i];
-      let inferredCity = extractCity(item.content || "");
-      if (!inferredCity && item.role === "assistant") {
-        const match = String(item.content || "").match(
-          /(?:weather|forecast)\s+(?:in|for|at)\s+([A-Z][A-Za-z-]*(?:\s+[A-Z][A-Za-z-]*)?)/i,
-        );
-        if (match) inferredCity = match[1].trim();
-      }
-      if (inferredCity && isValidCityInput(inferredCity)) {
-        previousCity = inferredCity;
-        break;
-      }
-      if (
-        item.role === "user" &&
-        /^[a-zA-Z][a-zA-Z\s-]{1,59}$/.test(String(item.content || "").trim()) &&
-        pendingCityQuestion
-      ) {
-        previousCity = String(item.content).trim();
-        break;
-      }
-    }
+      [...history].reverse().find((m) => m.role === "assistant")?.content || "";
+    const pendingCityQuestion = PENDING_CITY_PATTERN.test(lastAssistantMessage);
+    const lastUserMessage =
+      [...history].reverse().find((m) => m.role === "user")?.content || "";
+    const today = getPakistanDate(0);
 
     const intent = await extractWeatherIntent(userMessage, {
       previousCity,
       pendingCityQuestion,
       history,
+      today,
+      carryMessage: pendingCityQuestion ? lastUserMessage : "",
     });
 
-    console.log("[Chat pipeline]", {
-      userMessage,
-      previousCity,
-      pendingCityQuestion,
-      intent,
-    });
-
-    // If the assistant had just asked for a city, interpret the user's reply
-    // in that context (including replies that name more than one city).
-    if (
-      pendingCityQuestion &&
-      (intent.cities?.length || isValidCityInput(userMessage))
-    ) {
-      intent.asksWeather = true;
-      if (!intent.cities?.length) intent.cities = [userMessage];
-      intent.city = intent.cities[0];
-      if (/tomorrow/i.test(lastAssistantMessage)) {
-        intent.date = intent.date || "tomorrow";
-        intent.forecast = true;
-      } else if (
-        /forecast|rain|today|tonight|morning|afternoon|evening/i.test(
-          lastAssistantMessage,
-        )
-      ) {
-        intent.forecast = true;
-      }
-    }
-
-    let weatherData = null;
     let answer = "";
+    let weatherData = null;
+    let rememberCity = null;
 
-    if (!intent.asksWeather) {
-      answer =
-        "I'm your BTP Weather Assistant. I can help with current weather, temperatures, rain chances, and forecasts. Which city would you like to check?";
+    if (intent.topic !== "weather") {
+      // Greetings, thanks and off-topic questions get a fixed, friendly reply.
+      answer = REPLIES[intent.topic] || REPLIES.other;
+    } else if (checkDateWindow(intent)) {
+      answer = REPLIES.outOfRange;
     } else {
-      let requestedCities = Array.isArray(intent.cities)
-        ? intent.cities.filter(isValidCityInput)
+      let cities = Array.isArray(intent.cities)
+        ? intent.cities.filter(isValidCity)
         : [];
-      if (requestedCities.length === 0 && isValidCityInput(intent.city))
-        requestedCities = [intent.city.trim()];
-      if (requestedCities.length === 0 && isValidCityInput(city))
-        requestedCities = [city.trim()];
-      if (requestedCities.length === 0 && isValidCityInput(previousCity))
-        requestedCities = [previousCity];
-      requestedCities = [
-        ...new Map(
-          requestedCities.map((name) => [name.toLowerCase(), name]),
-        ).values(),
-      ].slice(0, 3);
+      if (cities.length === 0 && isValidCity(city)) cities = [city.trim()];
+      if (cities.length === 0 && isValidCity(previousCity))
+        cities = [previousCity];
+      cities = [
+        ...new Map(cities.map((c) => [c.toLowerCase(), c])).values(),
+      ].slice(0, MAX_CITIES);
 
-      if (requestedCities.length === 0) {
-        const forecastContext = intent.forecast || forecast === true;
-        answer = forecastContext
-          ? "Which city would you like the forecast for? You can name up to three cities to compare."
-          : "Which city would you like the weather for? You can name up to three cities to compare.";
+      if (cities.length === 0) {
+        answer = REPLIES.askCity;
       } else {
-        const needsForecast = intent.forecast === true || forecast === true;
+        const needsForecast = Boolean(
+          intent.forecast ||
+          forecast === true ||
+          intent.period ||
+          intent.days ||
+          intent.relativeTime ||
+          (intent.date && intent.date !== today),
+        );
+
         const results = await Promise.allSettled(
-          requestedCities.map(async (requestedCity) => {
-            const data = await getWeatherData(requestedCity, needsForecast);
-            data.requestedTime = intent.relativeTime;
-            data.requestedDate = intent.date;
-            data.requestedPeriod = intent.period;
-
-            if (data.type === "forecast" && intent.relativeTime) {
-              const targetTimestamp = resolveRelativeTargetTimestamp(
-                intent.relativeTime,
-              );
-              if (targetTimestamp === null) {
-                data.requestedForecastEntry = null;
-                data.forecastSelectionNote =
-                  "The requested relative time could not be resolved. Explain that the forecast time is unavailable; do not guess.";
-              } else {
-                data.requestedForecastEntry = selectNearestForecastEntry(
-                  data.forecast,
-                  targetTimestamp,
-                );
-                if (!data.requestedForecastEntry) {
-                  data.forecastSelectionNote =
-                    "No forecast entry is available close enough to the requested time. Explain this limitation clearly.";
-                }
-              }
-            }
-
-            if (data.type === "forecast" && intent.period) {
-              const targetDate =
-                intent.date === "tomorrow"
-                  ? getPakistanDate(1)
-                  : intent.date === "today"
-                    ? getPakistanDate(0)
-                    : getPakistanDate(0);
-              data.requestedPeriodEntries = getForecastEntriesForPeriod(
-                data.forecast,
-                targetDate,
-                intent.period,
-              );
-            }
-            return data;
+          cities.map(async (name) => {
+            const data = await getWeatherData(name, needsForecast);
+            return data.type === "forecast" ? trimForecast(data, intent) : data;
           }),
         );
 
-        const successes = results
-          .filter((item) => item.status === "fulfilled")
-          .map((item) => item.value);
-        const failures = results
-          .filter((item) => item.status === "rejected")
-          .map((item) => item.reason);
+        const found = [];
+        const notFound = [];
+        const errors = [];
+        results.forEach((result, i) => {
+          if (result.status === "fulfilled") found.push(result.value);
+          else if (result.reason?.status === 404) notFound.push(cities[i]);
+          else errors.push(result.reason);
+        });
 
-        if (successes.length === 0) {
-          const firstError = failures[0];
-          if (firstError?.status === 404) {
-            answer = `I couldn't find ${requestedCities.join(", ")}. Please check the spelling or try a nearby city.`;
-          } else {
-            throw firstError || new Error("Unable to retrieve weather data.");
-          }
+        if (found.length === 0) {
+          if (errors.length > 0) throw errors[0];
+          answer = REPLIES.notFound(notFound);
         } else {
-          weatherData = successes.length === 1 ? successes[0] : successes;
-          const failureNote = failures.length
-            ? `Some requested locations could not be retrieved: ${failures.map((e) => e.message).join("; ")}. Do not invent data for those locations.`
-            : "";
-          const systemMessage = `You are BTP Weather Assistant, a chatbot dedicated exclusively to weather.
-Answer the latest weather question clearly and concisely. Use only the supplied weather data. Never invent measurements, dates, timestamps, city results, or rain probabilities.
-Temperatures are in Celsius; wind speed is in metres per second. Rain probability is a forecast probability, not a guarantee.
-For relative-time forecasts, if requestedForecastEntry exists, use only that entry and state its date/time using dateTimePKT. Explain it is an approximate match, not an exact hourly prediction. If unavailable, explain the limitation; never substitute an unrelated entry.
-For date/period questions, use only entries for the requested date and period. If no relevant entries exist, say forecast coverage is unavailable. Forecast entries are approximately three hours apart; do not claim exact hourly predictions.
-Never add rain probabilities. Do not interpret missing data as 0%. A 0% forecast does not guarantee rain is impossible.
-Use dateTimePKT as Pakistan Standard Time (UTC+05:00); do not convert it again. Use conversation history to understand follow-ups, but use the supplied weather data for measurements.
-${failureNote}
-Weather data:
-${JSON.stringify(weatherData)}`;
-
+          weatherData = found.length === 1 ? found[0] : found;
+          rememberCity = found[0].city;
           answer = await generateChatResponse([
-            { role: "system", content: systemMessage },
+            {
+              role: "system",
+              content: buildSystemMessage(weatherData, today, notFound),
+            },
             ...history,
             { role: "user", content: userMessage },
           ]);
@@ -596,26 +255,18 @@ ${JSON.stringify(weatherData)}`;
       activeConversationId = created.rows[0].id;
     }
 
-    const dbClient = await pool.connect();
-    try {
-      await dbClient.query(
-        `INSERT INTO messages (conversation_id, role, content, created_at)
-   VALUES
-     ($1, 'user', $2, clock_timestamp()),
-     ($1, 'assistant', $3, clock_timestamp())`,
-        [activeConversationId, userMessage, answer],
-      );
-      await dbClient.query(
-        `UPDATE conversations SET updated_at = NOW() WHERE id = $1 AND user_id = $2`,
-        [activeConversationId, req.user.id],
-      );
-      await dbClient.query("COMMIT");
-    } catch (dbError) {
-      await dbClient.query("ROLLBACK");
-      throw dbError;
-    } finally {
-      dbClient.release();
-    }
+    await pool.query(
+      `INSERT INTO messages (conversation_id, role, content, created_at)
+       VALUES ($1, 'user', $2, clock_timestamp()),
+              ($1, 'assistant', $3, clock_timestamp())`,
+      [activeConversationId, userMessage, answer],
+    );
+    await pool.query(
+      `UPDATE conversations
+       SET updated_at = NOW(), last_city = COALESCE($3, last_city)
+       WHERE id = $1 AND user_id = $2`,
+      [activeConversationId, req.user.id, rememberCity],
+    );
 
     return res.json({
       success: true,
@@ -625,10 +276,13 @@ ${JSON.stringify(weatherData)}`;
     });
   } catch (error) {
     console.error("Chat request failed:", error);
-    if (error.status === 400 || error.status === 404) {
-      return res
-        .status(error.status)
-        .json({ success: false, message: error.message });
+
+    if (error.status === 413 || error.status === 429) {
+      return res.status(429).json({
+        success: false,
+        message:
+          "The assistant is busy right now. Please try again in a few seconds.",
+      });
     }
     return res.status(502).json({
       success: false,
